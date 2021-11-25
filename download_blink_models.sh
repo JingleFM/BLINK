@@ -24,13 +24,13 @@ if [[ ! -f biencoder_wiki_large.json ]]; then
     wget http://dl.fbaipublicfiles.com/BLINK/biencoder_wiki_large.json
 fi
 
-if [[ ! -f entity.jsonl ]]; then
-    wget http://dl.fbaipublicfiles.com/BLINK/entity.jsonl
-fi
+# if [[ ! -f entity.jsonl ]]; then
+#     wget http://dl.fbaipublicfiles.com/BLINK/entity.jsonl
+# fi
 
-if [[ ! -f all_entities_large.t7 ]]; then
-    wget http://dl.fbaipublicfiles.com/BLINK/all_entities_large.t7
-fi
+# if [[ ! -f all_entities_large.t7 ]]; then
+#     wget http://dl.fbaipublicfiles.com/BLINK/all_entities_large.t7
+# fi
 
 if [[ ! -f crossencoder_wiki_large.bin ]]; then
     wget http://dl.fbaipublicfiles.com/BLINK/crossencoder_wiki_large.bin

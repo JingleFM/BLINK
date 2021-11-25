@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  blink:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: jinglefm/blink
+    volumes:
+      - ~/models:/opt/BLINK/models
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    ports:
+      - "3030:3030"
+    hostname: blink
+    restart: always

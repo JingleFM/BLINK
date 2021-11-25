@@ -7,7 +7,6 @@
 from flair.models import SequenceTagger
 from flair.data import Sentence
 import spacy
-import neuralcoref
 import numpy as np
 
 
@@ -56,7 +55,6 @@ class Flair(NER_model):
 class Spacy(NER_model):
     def __init__(self, parameters=None):
         self.nlp = spacy.load("en_core_web_lg")
-        neuralcoref.add_to_pipe(self.nlp, greedyness=0.2)
         self.labels = set(parameters.get("labels") or self.nlp.entity.cfg[u'actions'])
 
     def predict(self, sentences):

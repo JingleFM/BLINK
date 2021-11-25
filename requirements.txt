@@ -14,6 +14,6 @@ colorama==0.4.3
 termcolor==1.1.0
 faiss-cpu>=1.6.1
 spacy==2.1.0
-en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-2.1.0/en_core_web_lg-2.1.0-py3-none-any.whl
+./en_core_web_lg-2.1.0.tar.gz
 fastapi==0.70.0
 uvicorn==0.15.0
