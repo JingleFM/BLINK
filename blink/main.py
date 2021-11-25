@@ -6,28 +6,27 @@
 #
 import argparse
 import json
-import sys
 
-from tqdm import tqdm
-import logging
-import torch
 import numpy as np
+import torch
+import uvicorn
 from colorama import init
+from fastapi import FastAPI
 from termcolor import colored
-
-import blink.ner as NER
 from torch.utils.data import DataLoader, SequentialSampler, TensorDataset
-from blink.biencoder.biencoder import BiEncoderRanker, load_biencoder
-from blink.crossencoder.crossencoder import CrossEncoderRanker, load_crossencoder
-from blink.biencoder.data_process import (
-    process_mention_data,
-    get_candidate_representation,
-)
-import blink.candidate_ranking.utils as utils
-from blink.crossencoder.train_cross import modify, evaluate
-from blink.crossencoder.data_process import prepare_crossencoder_data
-from blink.indexer.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer
+from tqdm import tqdm
 
+import blink.candidate_ranking.utils as utils
+import blink.ner as NER
+from blink.biencoder.biencoder import BiEncoderRanker, load_biencoder
+from blink.biencoder.data_process import (
+    get_candidate_representation,
+    process_mention_data,
+)
+from blink.crossencoder.crossencoder import CrossEncoderRanker, load_crossencoder
+from blink.crossencoder.data_process import prepare_crossencoder_data
+from blink.crossencoder.train_cross import evaluate, modify
+from blink.indexer.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer
 
 HIGHLIGHTS = [
     "on_red",
@@ -58,7 +57,6 @@ def _print_colorful_text(input_sentence, samples):
                 msg += input_sentence[int(sample["end_pos"]) :]
     else:
         msg = input_sentence
-        print("Failed to identify entity from text:")
     print("\n" + str(msg) + "\n")
 
 
@@ -274,20 +272,15 @@ def _run_crossencoder(crossencoder, dataloader, logger, context_len, device="cud
     accuracy = 0.0
     crossencoder.to(device)
 
-    res = evaluate(crossencoder, dataloader, device, logger, context_len, zeshel=False, silent=False)
+    res = evaluate(crossencoder, dataloader, device, logger, context_len, silent=False)
     accuracy = res["normalized_accuracy"]
     logits = res["logits"]
 
-    if accuracy > -1:
-        predictions = np.argsort(logits, axis=1)
-    else:
-        predictions = []
-
+    predictions = np.argsort(logits, axis=1)
     return accuracy, predictions, logits
 
 
 def load_models(args, logger=None):
-
     # load biencoder model
     if logger:
         logger.info("loading biencoder model")
@@ -318,10 +311,10 @@ def load_models(args, logger=None):
         wikipedia_id2local_id,
         faiss_indexer,
     ) = _load_candidates(
-        args.entity_catalogue, 
-        args.entity_encoding, 
-        faiss_index=getattr(args, 'faiss_index', None), 
-        index_path=getattr(args, 'index_path' , None),
+        args.entity_catalogue,
+        args.entity_encoding,
+        faiss_index=args.faiss_index,
+        index_path=args.index_path,
         logger=logger,
     )
 
@@ -339,278 +332,217 @@ def load_models(args, logger=None):
     )
 
 
-def run(
-    args,
-    logger,
-    biencoder,
-    biencoder_params,
-    crossencoder,
-    crossencoder_params,
-    candidate_encoding,
-    title2id,
-    id2title,
-    id2text,
-    wikipedia_id2local_id,
-    faiss_indexer=None,
-    test_data=None,
-):
+class EntityLinker:
+    def __init__(self, args, logger=None) -> None:
+        self.args = args
+        self.logger = logger
+        # Load NER model
+        if logger:
+            logger.info("loading NER model")
+        with open(args.ner_config) as json_file:
+            ner_params = json.load(json_file)
+        self.ner_model = NER.get_model(ner_params)
+        # load biencoder model
+        if logger:
+            logger.info("loading biencoder model")
+        with open(args.biencoder_config) as json_file:
+            biencoder_params = json.load(json_file)
+            biencoder_params["path_to_model"] = args.biencoder_model
+        biencoder = load_biencoder(biencoder_params)
 
-    if not test_data and not args.test_mentions and not args.interactive:
-        msg = (
-            "ERROR: either you start BLINK with the "
-            "interactive option (-i) or you pass in input test mentions (--test_mentions)"
-            "and test entitied (--test_entities)"
+        crossencoder = None
+        crossencoder_params = None
+        if not args.fast:
+            # load crossencoder model
+            if logger:
+                logger.info("loading crossencoder model")
+            with open(args.crossencoder_config) as json_file:
+                crossencoder_params = json.load(json_file)
+                crossencoder_params["path_to_model"] = args.crossencoder_model
+            crossencoder = load_crossencoder(crossencoder_params)
+
+        # load candidate entities
+        if logger:
+            logger.info("loading candidate entities")
+        (
+            candidate_encoding,
+            title2id,
+            id2title,
+            id2text,
+            wikipedia_id2local_id,
+            faiss_indexer,
+        ) = _load_candidates(
+            args.entity_catalogue,
+            args.entity_encoding,
+            faiss_index=args.faiss_index,
+            index_path=args.index_path,
+            logger=logger,
         )
-        raise ValueError(msg)
 
-    id2url = {
-        v: "https://en.wikipedia.org/wiki?curid=%s" % k
-        for k, v in wikipedia_id2local_id.items()
-    }
+        self.biencoder = biencoder
+        self.biencoder_params = biencoder_params
+        self.crossencoder = crossencoder
+        self.crossencoder_params = crossencoder_params
+        self.candidate_encoding = candidate_encoding
+        self.title2id = title2id
+        self.id2title = id2title
+        self.id2text = id2text
+        self.wikipedia_id2local_id = wikipedia_id2local_id
+        self.faiss_indexer = faiss_indexer
+        self.id2url = {
+            v: "https://en.wikipedia.org/wiki?curid=%s" % k
+            for k, v in wikipedia_id2local_id.items()
+        }
 
-    stopping_condition = False
-    while not stopping_condition:
+    def link_text(self, text):
+        # Identify mentions
+        samples = _annotate(self.ner_model, [text])
 
-        samples = None
-
-        if args.interactive:
-            logger.info("interactive mode")
-
-            # biencoder_params["eval_batch_size"] = 1
-
-            # Load NER model
-            if logger:
-                logger.info("loading NER model")
-            with open(args.ner_config) as json_file:
-                ner_params = json.load(json_file)
-            ner_model = NER.get_model(ner_params)
-
-            # Interactive
-            text = input("insert text:")
-
-            # Identify mentions
-            samples = _annotate(ner_model, [text])
-
-            _print_colorful_text(text, samples)
-
-        else:
-            if logger:
-                logger.info("test dataset mode")
-
-            if test_data:
-                samples = test_data
-            else:
-                # Load test mentions
-                samples = _get_test_samples(
-                    args.test_mentions,
-                    args.test_entities,
-                    title2id,
-                    wikipedia_id2local_id,
-                    logger,
-                )
-
-            stopping_condition = True
+        _print_colorful_text(text, samples)
 
         # don't look at labels
-        keep_all = (
-            args.interactive
-            or samples[0]["label"] == "unknown"
-            or samples[0]["label_id"] < 0
-        )
+        keep_all = True
 
         # prepare the data for biencoder
-        if logger:
-            logger.info("preparing data for biencoder")
+        logger.info("preparing data for biencoder")
         dataloader = _process_biencoder_dataloader(
-            samples, biencoder.tokenizer, biencoder_params
+            samples, self.biencoder.tokenizer, self.biencoder_params
         )
 
         # run biencoder
-        if logger:
-            logger.info("run biencoder")
+        logger.info("run biencoder")
         top_k = args.top_k
         labels, nns, scores = _run_biencoder(
-            biencoder, dataloader, candidate_encoding, top_k, faiss_indexer
+            self.biencoder,
+            dataloader,
+            self.candidate_encoding,
+            top_k,
+            self.faiss_indexer,
         )
 
-        if args.interactive:
+        # print biencoder prediction
+        idx = 0
+        linked_entities = []
+        for entity_list, sample, score_list in zip(nns, samples, scores):
+            e_id = entity_list[0]
+            e_title = self.id2title[e_id]
+            e_text = self.id2text[e_id]
+            e_url = self.id2url[e_id]
+            e_score = float(score_list[0])
+            linked_entities.append(
+                {
+                    "idx": idx,
+                    "sample": sample,
+                    "entity_id": e_id.item(),
+                    "entity_title": e_title,
+                    "entity_text": e_text,
+                    "entity_score": e_score,
+                    "url": e_url,
+                    "crossencoder": False,
+                }
+            )
+            idx += 1
 
-            print("\nfast (biencoder) predictions:")
-
-            _print_colorful_text(text, samples)
-
-            # print biencoder prediction
-            idx = 0
-            for entity_list, sample in zip(nns, samples):
-                e_id = entity_list[0]
-                e_title = id2title[e_id]
-                e_text = id2text[e_id]
-                e_url = id2url[e_id]
-                _print_colorful_prediction(
-                    idx, sample, e_id, e_title, e_text, e_url, args.show_url
-                )
-                idx += 1
-            print()
-
-            if args.fast:
-                # use only biencoder
-                continue
-
-        else:
-
-            biencoder_accuracy = -1
-            recall_at = -1
-            if not keep_all:
-                # get recall values
-                top_k = args.top_k
-                x = []
-                y = []
-                for i in range(1, top_k):
-                    temp_y = 0.0
-                    for label, top in zip(labels, nns):
-                        if label in top[:i]:
-                            temp_y += 1
-                    if len(labels) > 0:
-                        temp_y /= len(labels)
-                    x.append(i)
-                    y.append(temp_y)
-                # plt.plot(x, y)
-                biencoder_accuracy = y[0]
-                recall_at = y[-1]
-                print("biencoder accuracy: %.4f" % biencoder_accuracy)
-                print("biencoder recall@%d: %.4f" % (top_k, y[-1]))
-
-            if args.fast:
-
-                predictions = []
-                for entity_list in nns:
-                    sample_prediction = []
-                    for e_id in entity_list:
-                        e_title = id2title[e_id]
-                        sample_prediction.append(e_title)
-                    predictions.append(sample_prediction)
-
-                # use only biencoder
-                return (
-                    biencoder_accuracy,
-                    recall_at,
-                    -1,
-                    -1,
-                    len(samples),
-                    predictions,
-                    scores,
-                )
+        if args.fast:
+            # use only biencoder
+            return {"samples": samples, "linked_entities": linked_entities}
 
         # prepare crossencoder data
         context_input, candidate_input, label_input = prepare_crossencoder_data(
-            crossencoder.tokenizer, samples, labels, nns, id2title, id2text, keep_all,
+            self.crossencoder.tokenizer,
+            samples,
+            labels,
+            nns,
+            self.id2title,
+            self.id2text,
+            keep_all,
         )
 
         context_input = modify(
-            context_input, candidate_input, crossencoder_params["max_seq_length"]
+            context_input, candidate_input, self.crossencoder_params["max_seq_length"]
         )
 
         dataloader = _process_crossencoder_dataloader(
-            context_input, label_input, crossencoder_params
+            context_input, label_input, self.crossencoder_params
         )
 
         # run crossencoder and get accuracy
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         accuracy, index_array, unsorted_scores = _run_crossencoder(
-            crossencoder,
+            self.crossencoder,
             dataloader,
             logger,
-            context_len=biencoder_params["max_context_length"],
-            device=device
+            context_len=self.biencoder_params["max_context_length"],
+            device=device,
         )
 
-        if args.interactive:
-
-            print("\naccurate (crossencoder) predictions:")
-
-            _print_colorful_text(text, samples)
-
-            # print crossencoder prediction
-            idx = 0
-            for entity_list, index_list, sample in zip(nns, index_array, samples):
-                e_id = entity_list[index_list[-1]]
-                e_title = id2title[e_id]
-                e_text = id2text[e_id]
-                e_url = id2url[e_id]
-                _print_colorful_prediction(
-                    idx, sample, e_id, e_title, e_text, e_url, args.show_url
-                )
-                idx += 1
-            print()
-        else:
-
-            scores = []
-            predictions = []
-            for entity_list, index_list, scores_list in zip(
-                nns, index_array, unsorted_scores
-            ):
-
-                index_list = index_list.tolist()
-
-                # descending order
-                index_list.reverse()
-
-                sample_prediction = []
-                sample_scores = []
-                for index in index_list:
-                    e_id = entity_list[index]
-                    e_title = id2title[e_id]
-                    sample_prediction.append(e_title)
-                    sample_scores.append(scores_list[index])
-                predictions.append(sample_prediction)
-                scores.append(sample_scores)
-
-            crossencoder_normalized_accuracy = -1
-            overall_unormalized_accuracy = -1
-            if not keep_all:
-                crossencoder_normalized_accuracy = accuracy
-                print(
-                    "crossencoder normalized accuracy: %.4f"
-                    % crossencoder_normalized_accuracy
-                )
-
-                if len(samples) > 0:
-                    overall_unormalized_accuracy = (
-                        crossencoder_normalized_accuracy * len(label_input) / len(samples)
-                    )
-                print(
-                    "overall unnormalized accuracy: %.4f" % overall_unormalized_accuracy
-                )
-            return (
-                biencoder_accuracy,
-                recall_at,
-                crossencoder_normalized_accuracy,
-                overall_unormalized_accuracy,
-                len(samples),
-                predictions,
-                scores,
+        # print crossencoder prediction
+        idx = 0
+        linked_entities = []
+        for entity_list, index_list, sample, unsorted_score_list in zip(
+            nns, index_array, samples, unsorted_scores
+        ):
+            e_id = entity_list[index_list[-1]]
+            e_title = self.id2title[e_id]
+            e_text = self.id2text[e_id]
+            e_url = self.id2url[e_id]
+            e_score = float(unsorted_score_list[-1])
+            _print_colorful_prediction(
+                idx, sample, e_id, e_title, e_text, e_url, args.show_url
             )
+            linked_entities.append(
+                {
+                    "idx": idx,
+                    "sample": sample,
+                    "entity_id": e_id.item(),
+                    "entity_title": e_title,
+                    "entity_text": e_text,
+                    "entity_score": e_score,
+                    "url": e_url,
+                    "crossencoder": True,
+                }
+            )
+            idx += 1
+        return {"samples": samples, "linked_entities": linked_entities}
+
+    def run(self):
+        self.logger.info("interactive mode")
+        while True:
+            # Interactive
+            text = input("insert text:")
+            output = self.link_text(text)
+            samples = output["samples"]
+            linked_entities = output["linked_entities"]
+            _print_colorful_text(text, samples)
+            for e in linked_entities:
+                _print_colorful_prediction(
+                    e["idx"],
+                    e["sample"],
+                    e["entity_id"],
+                    e["entity_title"],
+                    e["entity_text"],
+                    e["url"],
+                    self.args.show_url,
+                )
+            print()
+
+    def create_app(self):
+        app = FastAPI()
+
+        @app.post("/api/entity-link/single")
+        async def entity_link(text: str):
+            return self.link_text(text)
+
+        return app
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--interactive", "-i", action="store_true", help="Interactive mode."
-    )
-
-    # test_data
-    parser.add_argument(
-        "--test_mentions", dest="test_mentions", type=str, help="Test Dataset."
-    )
-    parser.add_argument(
-        "--test_entities", dest="test_entities", type=str, help="Test Entities."
-    )
-
     # ner
     parser.add_argument(
-        "--ner_model", 
-        dest="ner_model", 
+        "--ner_config", 
+        dest="ner_config", 
         type=str, 
         default="models/ner.json",
         help="Path to the NER configuration."
@@ -700,9 +632,17 @@ if __name__ == "__main__":
         "--index_path", type=str, default=None, help="path to load indexer",
     )
 
+    parser.add_argument("--mode", type=str, default="interactive")
+
     args = parser.parse_args()
 
     logger = utils.get_logger(args.output_path)
 
-    models = load_models(args, logger)
-    run(args, logger, *models)
+    linker = EntityLinker(args, logger)
+    if args.mode == "interactive":
+        linker.run()
+    elif args.mode == "api":
+        app = linker.create_app()
+        uvicorn.run(app, host="0.0.0.0", port=3030)
+    else:
+        raise ValueError("Invalid mode")

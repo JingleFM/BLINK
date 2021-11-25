@@ -6,10 +6,16 @@
 #
 from flair.models import SequenceTagger
 from flair.data import Sentence
+import spacy
+import neuralcoref
+import numpy as np
 
 
 def get_model(parameters=None):
-    return Flair(parameters)
+    if parameters is None or parameters.get('model', None) == 'Spacy':
+        return Spacy(parameters)
+    else:
+        return Flair(parameters)
 
 
 class NER_model:
@@ -29,6 +35,7 @@ class NER_model:
 class Flair(NER_model):
     def __init__(self, parameters=None):
         self.model = SequenceTagger.load("ner")
+        self.labels = set(parameters.get('labels') or ['PER', 'LOC', 'ORG', 'MISC'])
 
     def predict(self, sentences):
         mentions = []
@@ -37,7 +44,35 @@ class Flair(NER_model):
             self.model.predict(sent)
             sent_mentions = sent.to_dict(tag_type="ner")["entities"]
             for mention in sent_mentions:
-                mention["sent_idx"] = sent_idx
-            mentions.extend(sent_mentions)
+                for label in mention.get('labels'):
+                    if label.value in self.labels:
+                        mention["sent_idx"] = sent_idx
+                        mentions.append(mention)
+                        break
+            # mentions.extend(sent_mentions)
         return {"sentences": sentences, "mentions": mentions}
 
+
+class Spacy(NER_model):
+    def __init__(self, parameters=None):
+        self.nlp = spacy.load("en_core_web_lg")
+        neuralcoref.add_to_pipe(self.nlp, greedyness=0.2)
+        self.labels = set(parameters.get("labels") or self.nlp.entity.cfg[u'actions'])
+
+    def predict(self, sentences):
+        mentions = []
+        for sent_idx, sent in enumerate(sentences):
+            doc = self.nlp(sent)
+            sent_mentions = []
+            for ent in doc.ents:
+                if ent.label_ in self.labels:
+                    sent_mentions.append(
+                        {
+                            "sent_idx": sent_idx,
+                            "text": ent.text,
+                            "start_pos": ent.start_char,
+                            "end_pos": ent.end_char,
+                        }
+                    )
+            mentions.extend(sent_mentions)
+        return {"sentences": sentences, "mentions": mentions}
