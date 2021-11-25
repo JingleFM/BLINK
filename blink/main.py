@@ -6,6 +6,7 @@
 #
 import argparse
 import json
+from typing import List
 
 import numpy as np
 import torch
@@ -27,6 +28,9 @@ from blink.crossencoder.crossencoder import CrossEncoderRanker, load_crossencode
 from blink.crossencoder.data_process import prepare_crossencoder_data
 from blink.crossencoder.train_cross import evaluate, modify
 from blink.indexer.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer
+import neuralcoref
+import spacy
+
 
 HIGHLIGHTS = [
     "on_red",
@@ -341,6 +345,9 @@ class EntityLinker:
             logger.info("loading NER model")
         with open(args.ner_config) as json_file:
             ner_params = json.load(json_file)
+        self.nlp = spacy.load("en_core_web_lg")
+        neuralcoref.add_to_pipe(self.nlp)
+        ner_params["nlp"] = self.nlp
         self.ner_model = NER.get_model(ner_params)
         # load biencoder model
         if logger:
@@ -505,6 +512,62 @@ class EntityLinker:
             idx += 1
         return {"samples": samples, "linked_entities": linked_entities}
 
+    def get_coref_resolved_text(self, texts):
+        docs = [self.nlp(text) for text in texts]
+        lengths = [len(list(doc.sents)) for doc in docs]
+        text = ' '.join(texts)
+        doc = self.nlp(text)
+        entities = list([ent for ent in doc.ents if ent.label_ == 'PERSON'])
+
+        for ent in entities:
+            if ent._.coref_cluster:
+                continue
+
+            mentions = [ent]
+
+            for _ent in entities:
+                if ent == _ent:
+                    continue
+
+                cond = ent.text.startswith(_ent.text) or ent.text.endswith(_ent.text)
+                cond = cond or _ent.text.startswith(ent.text) or _ent.text.endswith(ent.text)
+                if cond:
+                    mentions.append(_ent)
+                    ent._.coref_cluster = ent._.coref_cluster or _ent._.coref_cluster
+                    if ent._.coref_cluster:
+                        # Check if ent span is already covered by existing mention
+                        flag = False
+                        for mention in ent._.coref_cluster.mentions:
+                            if mention.start <= ent.start and mention.end >= ent.end:
+                                flag = True
+                                break
+                        if not flag:
+                            ent._.coref_cluster.mentions.append(ent)
+                        break
+
+            if ent._.coref_cluster is None and len(mentions) > 1:
+                mentions = sorted(mentions, key=lambda x: x.start)
+                cluster = neuralcoref.neuralcoref.Cluster(1, mentions[0], mentions)
+                for mention in mentions:
+                    mention._.coref_cluster = cluster
+                
+        clusters = list(set([ent._.coref_cluster for ent in entities if ent._.coref_cluster]))
+        for cluster in clusters:
+            cluster.mentions = sorted(cluster.mentions, key=lambda ent: len(ent.text), reverse=True)
+            cluster.main = cluster.mentions[0]
+        doc._.coref_clusters = clusters
+        doc._.coref_resolved = neuralcoref.neuralcoref.get_resolved(doc, doc._.coref_clusters)
+
+        text = doc._.coref_resolved
+        doc = self.nlp(text)
+        sents = list(doc.sents)
+        sents = [sent.text for sent in sents]
+        lengths.insert(0, 0)
+        lengths = np.cumsum(lengths)
+        sent_spans = [sents[lengths[i]:lengths[i + 1]] for i in range(len(lengths) - 1)]
+        texts = [' '.join(sent_span) for sent_span in sent_spans]
+        return texts
+
     def run(self):
         self.logger.info("interactive mode")
         while True:
@@ -532,6 +595,10 @@ class EntityLinker:
         @app.post("/api/entity-link/single")
         async def entity_link(text: str):
             return self.link_text(text)
+
+        @app.post("/api/resolve-coref")
+        async def resolve_coref(texts: List[str]):
+            return self.get_coref_resolved_text(texts)
 
         return app
 

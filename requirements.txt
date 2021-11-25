@@ -17,3 +17,4 @@ spacy==2.1.0
 ./en_core_web_lg-2.1.0.tar.gz
 fastapi==0.70.0
 uvicorn==0.15.0
+neuralcoref==4.0

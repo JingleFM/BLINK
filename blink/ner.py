@@ -54,7 +54,7 @@ class Flair(NER_model):
 
 class Spacy(NER_model):
     def __init__(self, parameters=None):
-        self.nlp = spacy.load("en_core_web_lg")
+        self.nlp = parameters["nlp"]
         self.labels = set(parameters.get("labels") or self.nlp.entity.cfg[u'actions'])
 
     def predict(self, sentences):
