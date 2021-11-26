@@ -8,6 +8,7 @@ services:
     volumes:
       - ~/models:/opt/BLINK/models
       - ~/.cache/huggingface:/root/.cache/huggingface
+      - ~/.cache/torch:/root/.cache/torch
     ports:
       - "3030:3030"
     hostname: blink
