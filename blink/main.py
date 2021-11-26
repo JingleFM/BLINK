@@ -153,72 +153,6 @@ def _load_candidates(
     )
 
 
-def __map_test_entities(test_entities_path, title2id, logger):
-    # load the 732859 tac_kbp_ref_know_base entities
-    kb2id = {}
-    missing_pages = 0
-    n = 0
-    with open(test_entities_path, "r") as fin:
-        lines = fin.readlines()
-        for line in lines:
-            entity = json.loads(line)
-            if entity["title"] not in title2id:
-                missing_pages += 1
-            else:
-                kb2id[entity["entity_id"]] = title2id[entity["title"]]
-            n += 1
-    if logger:
-        logger.info("missing {}/{} pages".format(missing_pages, n))
-    return kb2id
-
-
-def __load_test(test_filename, kb2id, wikipedia_id2local_id, logger):
-    test_samples = []
-    with open(test_filename, "r") as fin:
-        lines = fin.readlines()
-        for line in lines:
-            record = json.loads(line)
-            record["label"] = str(record["label_id"])
-
-            # for tac kbp we should use a separate knowledge source to get the entity id (label_id)
-            if kb2id and len(kb2id) > 0:
-                if record["label"] in kb2id:
-                    record["label_id"] = kb2id[record["label"]]
-                else:
-                    continue
-
-            # check that each entity id (label_id) is in the entity collection
-            elif wikipedia_id2local_id and len(wikipedia_id2local_id) > 0:
-                try:
-                    key = int(record["label"].strip())
-                    if key in wikipedia_id2local_id:
-                        record["label_id"] = wikipedia_id2local_id[key]
-                    else:
-                        continue
-                except:
-                    continue
-
-            # LOWERCASE EVERYTHING !
-            record["context_left"] = record["context_left"].lower()
-            record["context_right"] = record["context_right"].lower()
-            record["mention"] = record["mention"].lower()
-            test_samples.append(record)
-
-    if logger:
-        logger.info("{}/{} samples considered".format(len(test_samples), len(lines)))
-    return test_samples
-
-
-def _get_test_samples(
-    test_filename, test_entities_path, title2id, wikipedia_id2local_id, logger
-):
-    kb2id = None
-    if test_entities_path:
-        kb2id = __map_test_entities(test_entities_path, title2id, logger)
-    test_samples = __load_test(test_filename, kb2id, wikipedia_id2local_id, logger)
-    return test_samples
-
-
 def _process_biencoder_dataloader(samples, tokenizer, biencoder_params):
     _, tensor_data = process_mention_data(
         samples,
@@ -282,58 +216,6 @@ def _run_crossencoder(crossencoder, dataloader, logger, context_len, device="cud
 
     predictions = np.argsort(logits, axis=1)
     return accuracy, predictions, logits
-
-
-def load_models(args, logger=None):
-    # load biencoder model
-    if logger:
-        logger.info("loading biencoder model")
-    with open(args.biencoder_config) as json_file:
-        biencoder_params = json.load(json_file)
-        biencoder_params["path_to_model"] = args.biencoder_model
-    biencoder = load_biencoder(biencoder_params)
-
-    crossencoder = None
-    crossencoder_params = None
-    if not args.fast:
-        # load crossencoder model
-        if logger:
-            logger.info("loading crossencoder model")
-        with open(args.crossencoder_config) as json_file:
-            crossencoder_params = json.load(json_file)
-            crossencoder_params["path_to_model"] = args.crossencoder_model
-        crossencoder = load_crossencoder(crossencoder_params)
-
-    # load candidate entities
-    if logger:
-        logger.info("loading candidate entities")
-    (
-        candidate_encoding,
-        title2id,
-        id2title,
-        id2text,
-        wikipedia_id2local_id,
-        faiss_indexer,
-    ) = _load_candidates(
-        args.entity_catalogue,
-        args.entity_encoding,
-        faiss_index=args.faiss_index,
-        index_path=args.index_path,
-        logger=logger,
-    )
-
-    return (
-        biencoder,
-        biencoder_params,
-        crossencoder,
-        crossencoder_params,
-        candidate_encoding,
-        title2id,
-        id2title,
-        id2text,
-        wikipedia_id2local_id,
-        faiss_indexer,
-    )
 
 
 class EntityLinker:
