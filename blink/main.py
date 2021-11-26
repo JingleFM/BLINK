@@ -139,7 +139,8 @@ def _load_candidates(
                 assert wikipedia_id not in wikipedia_id2local_id
                 wikipedia_id2local_id[wikipedia_id] = local_idx
 
-            title2id[entity["title"]] = local_idx
+            # title2id[entity["title"]] = local_idx
+            title2id[entity["title"]] = entity["_id"]
             id2title[local_idx] = entity["title"]
             id2text[local_idx] = entity["text"]
             local_idx += 1
@@ -318,6 +319,7 @@ class EntityLinker:
             e_text = self.id2text[e_id]
             e_url = self.id2url[e_id]
             e_score = float(score_list[0])
+            e_qid = self.title2id[e_title]
             linked_entities.append(
                 {
                     "idx": idx,
@@ -326,6 +328,7 @@ class EntityLinker:
                     "entity_title": e_title,
                     "entity_text": e_text,
                     "entity_score": e_score,
+                    "entity_qid": e_qid,
                     "url": e_url,
                     "crossencoder": False,
                 }
