@@ -19,4 +19,4 @@ EXPOSE 3030
 
 WORKDIR /opt/BLINK
 
-CMD ["python3", "/opt/BLINK/blink/main.py"]
+CMD ["python3", "/opt/BLINK/blink/main.py", "--fast", "--mode", "api"]
