@@ -289,7 +289,7 @@ class EntityLinker:
         # Identify mentions
         samples = _annotate(self.ner_model, [text])
 
-        _print_colorful_text(text, samples)
+        # _print_colorful_text(text, samples)
 
         # don't look at labels
         keep_all = True
@@ -462,7 +462,7 @@ class EntityLinker:
             output = self.link_text(text)
             samples = output["samples"]
             linked_entities = output["linked_entities"]
-            _print_colorful_text(text, samples)
+            # _print_colorful_text(text, samples)
             for e in linked_entities:
                 _print_colorful_prediction(
                     e["idx"],
