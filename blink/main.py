@@ -285,9 +285,9 @@ class EntityLinker:
             for k, v in wikipedia_id2local_id.items()
         }
 
-    def link_text(self, text):
+    def link_text(self, texts):
         # Identify mentions
-        samples = _annotate(self.ner_model, [text])
+        samples = _annotate(self.ner_model, texts)
 
         # _print_colorful_text(text, samples)
 
@@ -459,7 +459,7 @@ class EntityLinker:
         while True:
             # Interactive
             text = input("insert text:")
-            output = self.link_text(text)
+            output = self.link_text([text])
             samples = output["samples"]
             linked_entities = output["linked_entities"]
             # _print_colorful_text(text, samples)
@@ -478,9 +478,13 @@ class EntityLinker:
     def create_app(self):
         app = FastAPI()
 
-        @app.post("/api/entity-link/single")
-        async def entity_link(text: str):
-            return self.link_text(text)
+        @app.post("/api/entity-link/batch")
+        async def entity_link_batch(texts: List[str]):
+            return self.link_text(texts)
+
+        # @app.post("/api/entity-link/single")
+        # async def entity_link(text: str):
+        #     return self.link_text([text])
 
         @app.post("/api/resolve-coref")
         async def resolve_coref(texts: List[str]):
