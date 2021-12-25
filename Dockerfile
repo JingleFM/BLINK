@@ -1,10 +1,10 @@
-FROM ubuntu:20.04
+FROM python:3.7-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get upgrade -f -y
 
-RUN apt-get install wget python3 python3-pip python3-dev build-essential make cmake g++ libfreetype6-dev python3-matplotlib pkg-config -y
+RUN apt-get install wget build-essential make cmake g++ -y
 
 ADD ./requirements.txt /tmp/requirements.txt
 RUN wget https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-2.1.0/en_core_web_lg-2.1.0.tar.gz
