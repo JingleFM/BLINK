@@ -609,8 +609,8 @@ if __name__ == "__main__":
 
     # ner
     parser.add_argument(
-        "--ner_model", 
-        dest="ner_model", 
+        "--ner_config", 
+        dest="ner_config", 
         type=str, 
         default="models/ner.json",
         help="Path to the NER configuration."
