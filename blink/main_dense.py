@@ -511,11 +511,13 @@ def run(
         )
 
         # run crossencoder and get accuracy
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         accuracy, index_array, unsorted_scores = _run_crossencoder(
             crossencoder,
             dataloader,
             logger,
             context_len=biencoder_params["max_context_length"],
+            device=device
         )
 
         if args.interactive:
