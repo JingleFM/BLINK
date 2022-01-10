@@ -53,14 +53,30 @@ def get_context_representation(
         if right_add <= right_quota:
             left_quota += right_quota - right_add
 
+    length = len(context_left)
     context_tokens = (
-        context_left[-left_quota:] + mention_tokens + context_right[:right_quota]
+        context_left[length-left_quota:length] + mention_tokens + context_right[:right_quota]
     )
 
     context_tokens = ["[CLS]"] + context_tokens + ["[SEP]"]
     input_ids = tokenizer.convert_tokens_to_ids(context_tokens)
     padding = [0] * (max_seq_length - len(input_ids))
     input_ids += padding
+
+    if len(input_ids) != max_seq_length:
+        logging.error(
+            "Context representation is not of correct length: {}".format(
+                len(input_ids)
+            )
+        )
+        logging.error(sample)
+        logging.error(context_left)
+        logging.error(context_right)
+        logging.error(mention_tokens)
+        logging.error(context_tokens)
+        logging.error(input_ids)
+        raise ValueError("Context representation is not of correct length")
+
     assert len(input_ids) == max_seq_length
 
     return {
@@ -89,6 +105,19 @@ def get_candidate_representation(
     input_ids = tokenizer.convert_tokens_to_ids(cand_tokens)
     padding = [0] * (max_seq_length - len(input_ids))
     input_ids += padding
+
+    if len(input_ids) != max_seq_length:
+        logging.error(
+            "Candidate representation is not of correct length: {}".format(
+                len(input_ids)
+            )
+        )
+        logging.error(candidate_desc)
+        logging.error(candidate_title)
+        logging.error(cand_tokens)
+        logging.error(input_ids)
+        raise ValueError("Candidate representation is not of correct length")
+        
     assert len(input_ids) == max_seq_length
 
     return {
