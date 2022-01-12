@@ -91,7 +91,6 @@ class BiEncoderRanker(torch.nn.Module):
         if model_path is not None:
             self.load_model(model_path)
 
-        self.model.cand_encoder = None
         self.model = self.model.to(self.device)
         self.data_parallel = params.get("data_parallel")
         if self.data_parallel:
