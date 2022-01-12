@@ -91,6 +91,7 @@ class BiEncoderRanker(torch.nn.Module):
         if model_path is not None:
             self.load_model(model_path)
 
+        self.model.cand_encoder = None
         self.model = self.model.to(self.device)
         self.data_parallel = params.get("data_parallel")
         if self.data_parallel:
@@ -156,14 +157,19 @@ class BiEncoderRanker(torch.nn.Module):
         token_idx_ctxt, segment_idx_ctxt, mask_ctxt = to_bert_input(
             text_vecs, self.NULL_IDX
         )
+
+        token_idx_ctxt, segment_idx_ctxt, mask_ctxt = token_idx_ctxt.to(self.device), segment_idx_ctxt.to(self.device), mask_ctxt.to(self.device)
         embedding_ctxt, _ = self.model(
             token_idx_ctxt, segment_idx_ctxt, mask_ctxt, None, None, None
         )
+        del token_idx_ctxt, segment_idx_ctxt, mask_ctxt
+        torch.cuda.empty_cache()
 
         # Candidate encoding is given, do not need to re-compute
         # Directly return the score of context encoding and candidate encoding
         if cand_encs is not None:
-            return embedding_ctxt.mm(cand_encs.t())
+            scores = embedding_ctxt.mm(cand_encs.to(self.device).t())
+            return scores.cpu().detach()
 
         # Train time. We compare with all elements of the batch
         token_idx_cands, segment_idx_cands, mask_cands = to_bert_input(
