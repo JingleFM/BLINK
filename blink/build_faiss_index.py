@@ -11,7 +11,7 @@ import os
 import time
 import torch
 
-from blink.indexer.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer
+from blink.indexer.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer, FaissIndexer
 import blink.candidate_ranking.utils as utils
 
 logger = utils.get_logger()
@@ -27,12 +27,7 @@ def main(params):
     candidate_encoding = torch.load(params["candidate_encoding"])
     vector_size = candidate_encoding.size(1)
     index_buffer = params["index_buffer"]
-    if params["hnsw"]:
-        logger.info("Using HNSW index in FAISS")
-        index = DenseHNSWFlatIndexer(vector_size, index_buffer)
-    else:
-        logger.info("Using Flat index in FAISS")
-        index = DenseFlatIndexer(vector_size, index_buffer)
+    index = FaissIndexer(params['index_factory'], vector_size, index_buffer)
 
     logger.info("Building index.")
     index.index_data(candidate_encoding.numpy())
@@ -57,8 +52,8 @@ if __name__ == '__main__':
         help="file path for candidte encoding.",
     )
     parser.add_argument(
-        "--hnsw", action='store_true', 
-        help='If enabled, use inference time efficient HNSW index',
+        "--index_factory", type=str,
+        help='index factory to use',
     )
     parser.add_argument(
         "--save_index", action='store_true', 

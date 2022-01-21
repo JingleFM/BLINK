@@ -26,7 +26,7 @@ from blink.biencoder.data_process import (
 import blink.candidate_ranking.utils as utils
 from blink.crossencoder.train_cross import modify, evaluate
 from blink.crossencoder.data_process import prepare_crossencoder_data
-from blink.indexer.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer
+from blink.indexer.faiss_indexer import FaissIndexer
 
 
 HIGHLIGHTS = [
@@ -108,12 +108,7 @@ def _load_candidates(
             logger.info("Using faiss index to retrieve entities.")
         candidate_encoding = None
         assert index_path is not None, "Error! Empty indexer path."
-        if faiss_index == "flat":
-            indexer = DenseFlatIndexer(1)
-        elif faiss_index == "hnsw":
-            indexer = DenseHNSWFlatIndexer(1)
-        else:
-            raise ValueError("Error! Unsupported indexer type! Choose from flat,hnsw.")
+        indexer = FaissIndexer(faiss_index, 1)
         indexer.deserialize_from(index_path)
 
     # load all the 5903527 entities
@@ -499,7 +494,7 @@ def run(
 
         # prepare crossencoder data
         context_input, candidate_input, label_input = prepare_crossencoder_data(
-            crossencoder.tokenizer, samples, labels, nns, id2title, id2text, keep_all,
+            crossencoder.tokenizer, samples, labels, nns, id2title, id2text, keep_all, top_k=top_k
         )
 
         context_input = modify(
