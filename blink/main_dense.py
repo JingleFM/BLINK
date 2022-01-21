@@ -108,7 +108,7 @@ def _load_candidates(
             logger.info("Using faiss index to retrieve entities.")
         candidate_encoding = None
         assert index_path is not None, "Error! Empty indexer path."
-        indexer = FaissIndexer(faiss_index, 1)
+        indexer = FaissIndexer(faiss_index, 1024)
         indexer.deserialize_from(index_path)
 
     # load all the 5903527 entities
@@ -514,7 +514,7 @@ def run(
             context_len=biencoder_params["max_context_length"],
             device=device
         )
-
+        
         if args.interactive:
 
             print("\naccurate (crossencoder) predictions:")
