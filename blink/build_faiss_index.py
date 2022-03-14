@@ -11,7 +11,7 @@ import os
 import time
 import torch
 
-from blink.indexer.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer, FaissIndexer
+from blink.indexer.faiss_indexer import FaissIndexer
 import blink.candidate_ranking.utils as utils
 
 logger = utils.get_logger()

@@ -16,6 +16,8 @@ import pickle
 import faiss
 import numpy as np
 
+from tqdm import tqdm
+
 logger = logging.getLogger()
 
 
@@ -32,7 +34,7 @@ class FaissIndexer(object):
         n = len(data)
         logger.info("Indexing data, this may take a while.")
         cnt = 0
-        for i in range(0, n, self.buffer_size):
+        for i in tqdm(range(0, n, self.buffer_size)):
             vectors = [np.reshape(t, (1, -1)) for t in data[i : i + self.buffer_size]]
             vectors = np.concatenate(vectors, axis=0)
             self.index.add(vectors)
@@ -50,6 +52,15 @@ class FaissIndexer(object):
 
     def serialize(self, index_file: str):
         logger.info("Serializing index to %s", index_file)
+
+        # We probe 1/10the of the Voronoi cells
+        try:
+            ivf = faiss.extract_index_ivf(self.index)
+            ivf.nprobe = ivf.nlist // 10
+            ivf.nprobe = max(1, ivf.nprobe)
+        except:
+            pass
+
         faiss.write_index(self.index, index_file)
 
     def deserialize_from(self, index_file: str):
