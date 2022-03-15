@@ -24,6 +24,9 @@ logger = logging.getLogger()
 class FaissIndexer(object):
     def __init__(self, index_factory, vector_sz: int = 1, buffer_size: int = 50000):
         self.buffer_size = buffer_size
+
+        # We hardcode inner product as a similarity metric because that is what the biencoder is trained to optimize
+        # Please refer to the BLINK paper for more details about biencoder objective function
         self.index = faiss.index_factory(vector_sz, index_factory, faiss.METRIC_INNER_PRODUCT)
 
     def index_data(self, data: np.array):
