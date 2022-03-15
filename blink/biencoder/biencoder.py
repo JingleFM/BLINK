@@ -127,6 +127,7 @@ class BiEncoderRanker(torch.nn.Module):
         token_idx_cands, segment_idx_cands, mask_cands = to_bert_input(
             cands, self.NULL_IDX
         )
+        token_idx_cands, segment_idx_cands, mask_cands = token_idx_cands.to(self.device), segment_idx_cands.to(self.device), mask_cands.to(self.device)
         embedding_context, _ = self.model(
             token_idx_cands, segment_idx_cands, mask_cands, None, None, None
         )
@@ -136,6 +137,7 @@ class BiEncoderRanker(torch.nn.Module):
         token_idx_cands, segment_idx_cands, mask_cands = to_bert_input(
             cands, self.NULL_IDX
         )
+        token_idx_cands, segment_idx_cands, mask_cands = token_idx_cands.to(self.device), segment_idx_cands.to(self.device), mask_cands.to(self.device)
         _, embedding_cands = self.model(
             None, None, None, token_idx_cands, segment_idx_cands, mask_cands
         )
