@@ -24,8 +24,7 @@ logger = logging.getLogger()
 class FaissIndexer(object):
     def __init__(self, index_factory, vector_sz: int = 1, buffer_size: int = 50000):
         self.buffer_size = buffer_size
-        self.index = faiss.index_factory(vector_sz, index_factory)
-        self.index.metric_type = faiss.METRIC_INNER_PRODUCT
+        self.index = faiss.index_factory(vector_sz, index_factory, faiss.METRIC_INNER_PRODUCT)
 
     def index_data(self, data: np.array):
         if not self.index.is_trained:
