@@ -36,61 +36,6 @@ HIGHLIGHTS = [
 ]
 
 
-def _print_colorful_text(input_sentence, samples):
-    init()  # colorful output
-    msg = ""
-    if samples and (len(samples) > 0):
-        msg += input_sentence[0 : int(samples[0]["start_pos"])]
-        for idx, sample in enumerate(samples):
-            msg += colored(
-                input_sentence[int(sample["start_pos"]) : int(sample["end_pos"])],
-                "grey",
-                HIGHLIGHTS[idx % len(HIGHLIGHTS)],
-            )
-            if idx < len(samples) - 1:
-                msg += input_sentence[
-                    int(sample["end_pos"]) : int(samples[idx + 1]["start_pos"])
-                ]
-            else:
-                msg += input_sentence[int(sample["end_pos"]) :]
-    else:
-        msg = input_sentence
-        print("Failed to identify entity from text:")
-    print("\n" + str(msg) + "\n")
-
-
-def _print_colorful_prediction(
-    idx, sample, e_id, e_title
-):
-    print(colored(sample["mention"], "grey", HIGHLIGHTS[idx % len(HIGHLIGHTS)]))
-    to_print = "id:{}\ntitle:{}\n".format(e_id, e_title)
-    print(to_print)
-
-
-def _annotate(ner_model, input_sentences):
-    ner_output_data = ner_model.predict(input_sentences)
-    sentences = ner_output_data["sentences"]
-    mentions = ner_output_data["mentions"]
-    samples = []
-    for mention in mentions:
-        record = {}
-        record["label"] = "unknown"
-        record["label_id"] = -1
-        # LOWERCASE EVERYTHING !
-        record["context_left"] = sentences[mention["sent_idx"]][
-            : mention["start_pos"]
-        ].lower()
-        record["context_right"] = sentences[mention["sent_idx"]][
-            mention["end_pos"] :
-        ].lower()
-        record["mention"] = mention["text"].lower()
-        record["start_pos"] = int(mention["start_pos"])
-        record["end_pos"] = int(mention["end_pos"])
-        record["sent_idx"] = mention["sent_idx"]
-        samples.append(record)
-    return samples
-
-
 def _load_candidates(
     entity_catalogue, entity_encoding, faiss_index=None, index_path=None, logger=None
 ):
@@ -107,89 +52,19 @@ def _load_candidates(
         indexer.deserialize_from(index_path)
 
     # load all the 5903527 entities
-    title2id = {}
-    id2title = {}
+    id2entity = {}
     local_idx = 0
     with open(entity_catalogue, "r") as fin:
         lines = fin.readlines()
         for line in lines:
             entity = json.loads(line)
-
-            title2id[entity["title"]] = local_idx
-            id2title[local_idx] = entity["title"]
+            id2entity[entity["id"]] = {k:v for k,v in entity.items() if k in ["id", "title"]}
             local_idx += 1
     return (
         candidate_encoding,
-        title2id,
-        id2title,
+        id2entity,
         indexer,
     )
-
-
-def __map_test_entities(test_entities_path, title2id, logger):
-    # load the 732859 tac_kbp_ref_know_base entities
-    kb2id = {}
-    missing_pages = 0
-    n = 0
-    with open(test_entities_path, "r") as fin:
-        lines = fin.readlines()
-        for line in lines:
-            entity = json.loads(line)
-            if entity["title"] not in title2id:
-                missing_pages += 1
-            else:
-                kb2id[entity["entity_id"]] = title2id[entity["title"]]
-            n += 1
-    if logger:
-        logger.info("missing {}/{} pages".format(missing_pages, n))
-    return kb2id
-
-
-def __load_test(test_filename, kb2id, wikipedia_id2local_id, logger):
-    test_samples = []
-    with open(test_filename, "r") as fin:
-        lines = fin.readlines()
-        for line in lines:
-            record = json.loads(line)
-            record["label"] = str(record["label_id"])
-
-            # for tac kbp we should use a separate knowledge source to get the entity id (label_id)
-            if kb2id and len(kb2id) > 0:
-                if record["label"] in kb2id:
-                    record["label_id"] = kb2id[record["label"]]
-                else:
-                    continue
-
-            # check that each entity id (label_id) is in the entity collection
-            elif wikipedia_id2local_id and len(wikipedia_id2local_id) > 0:
-                try:
-                    key = int(record["label"].strip())
-                    if key in wikipedia_id2local_id:
-                        record["label_id"] = wikipedia_id2local_id[key]
-                    else:
-                        continue
-                except:
-                    continue
-
-            # LOWERCASE EVERYTHING !
-            record["context_left"] = record["context_left"].lower()
-            record["context_right"] = record["context_right"].lower()
-            record["mention"] = record["mention"].lower()
-            test_samples.append(record)
-
-    if logger:
-        logger.info("{}/{} samples considered".format(len(test_samples), len(lines)))
-    return test_samples
-
-
-def _get_test_samples(
-    test_filename, test_entities_path, title2id, wikipedia_id2local_id, logger
-):
-    kb2id = None
-    if test_entities_path:
-        kb2id = __map_test_entities(test_entities_path, title2id, logger)
-    test_samples = __load_test(test_filename, kb2id, wikipedia_id2local_id, logger)
-    return test_samples
 
 
 def _process_biencoder_dataloader(samples, tokenizer, biencoder_params):
@@ -250,8 +125,7 @@ def load_models(args, logger=None):
         logger.info("loading candidate entities")
     (
         candidate_encoding,
-        title2id,
-        id2title,
+        id2entity,
         faiss_indexer,
     ) = _load_candidates(
         args.entity_catalogue, 
@@ -265,8 +139,7 @@ def load_models(args, logger=None):
         biencoder,
         biencoder_params,
         candidate_encoding,
-        title2id,
-        id2title,
+        id2entity,
         faiss_indexer,
     )
 
@@ -277,8 +150,7 @@ def run(
     biencoder,
     biencoder_params,
     candidate_encoding,
-    title2id,
-    id2title,
+    id2entity,
     faiss_indexer=None,
     test_data=None,
 ):
@@ -339,8 +211,8 @@ def run(
     for entity_list in nns:
         sample_prediction = []
         for e_id in entity_list:
-            e_title = id2title[e_id]
-            sample_prediction.append(e_title)
+            entity = id2entity[e_id]
+            sample_prediction.append(entity)
         predictions.append(sample_prediction)
 
     # use only biencoder
