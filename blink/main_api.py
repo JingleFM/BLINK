@@ -294,8 +294,7 @@ def run(
 
     # don't look at labels
     keep_all = (
-        args.interactive
-        or samples[0]["label"] == "unknown"
+        samples[0]["label"] == "unknown"
         or samples[0]["label_id"] < 0
     )
 
@@ -358,10 +357,6 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--interactive", "-i", action="store_true", help="Interactive mode."
-    )
 
     # biencoder
     parser.add_argument(
