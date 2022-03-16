@@ -23,7 +23,6 @@ from blink.biencoder.data_process import (
     get_candidate_representation,
 )
 import blink.candidate_ranking.utils as utils
-from blink.crossencoder.train_cross import modify, evaluate
 from blink.indexer.faiss_indexer import FaissIndexer
 
 
@@ -234,32 +233,6 @@ def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, indexer
         nns.extend(indicies)
         all_scores.extend(scores)
     return labels, nns, all_scores
-
-
-def _process_crossencoder_dataloader(context_input, label_input, crossencoder_params):
-    tensor_data = TensorDataset(context_input, label_input)
-    sampler = SequentialSampler(tensor_data)
-    dataloader = DataLoader(
-        tensor_data, sampler=sampler, batch_size=crossencoder_params["eval_batch_size"]
-    )
-    return dataloader
-
-
-def _run_crossencoder(crossencoder, dataloader, logger, context_len, device="cuda"):
-    crossencoder.model.eval()
-    accuracy = 0.0
-    crossencoder.to(device)
-
-    res = evaluate(crossencoder, dataloader, device, logger, context_len, zeshel=False, silent=False)
-    accuracy = res["normalized_accuracy"]
-    logits = res["logits"]
-
-    if accuracy > -1:
-        predictions = np.argsort(logits, axis=1)
-    else:
-        predictions = []
-
-    return accuracy, predictions, logits
 
 
 def load_models(args, logger=None):
