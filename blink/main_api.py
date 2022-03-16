@@ -58,7 +58,7 @@ def _load_candidates(
         lines = fin.readlines()
         for line in lines:
             entity = json.loads(line)
-            id2entity[entity["id"]] = {k:v for k,v in entity.items() if k in ["id", "title"]}
+            id2entity[local_idx] = {k:v for k,v in entity.items() if k in ["id", "title"]}
             local_idx += 1
     return (
         candidate_encoding,
