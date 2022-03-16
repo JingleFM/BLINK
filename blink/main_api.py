@@ -131,7 +131,7 @@ def load_models(args, logger=None):
         args.entity_catalogue, 
         args.entity_encoding, 
         faiss_index=getattr(args, 'faiss_index', None), 
-        index_path=getattr(args, 'index_path' , None),
+        index_path=getattr(args, 'index_path', None),
         logger=logger,
     )
 
