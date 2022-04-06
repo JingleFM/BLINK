@@ -12,8 +12,6 @@ from tqdm import tqdm
 import logging
 import torch
 import numpy as np
-from colorama import init
-from termcolor import colored
 
 import blink.ner as NER
 from torch.utils.data import DataLoader, SequentialSampler, TensorDataset
@@ -24,16 +22,6 @@ from blink.biencoder.data_process import (
 )
 import blink.candidate_ranking.utils as utils
 from blink.indexer.faiss_indexer import FaissIndexer
-
-
-HIGHLIGHTS = [
-    "on_red",
-    "on_green",
-    "on_yellow",
-    "on_blue",
-    "on_magenta",
-    "on_cyan",
-]
 
 
 def _load_candidates(
