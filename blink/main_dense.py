@@ -236,11 +236,13 @@ def _process_biencoder_dataloader(samples, tokenizer, biencoder_params):
 
 def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, indexer=None):
     biencoder.model.eval()
+    device = biencoder.device
     labels = []
     nns = []
     all_scores = []
     for batch in tqdm(dataloader):
         context_input, _, label_ids = batch
+        context_input = context_input.to(device)
         with torch.no_grad():
             if indexer is not None:
                 context_encoding = biencoder.encode_context(context_input).numpy()
@@ -248,7 +250,7 @@ def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, indexer
                 scores, indicies = indexer.search_knn(context_encoding, top_k)
             else:
                 scores = biencoder.score_candidate(
-                    context_input, None, cand_encs=candidate_encoding  # .to(device)
+                    context_input, None, cand_encs=candidate_encoding.to(device)
                 )
                 scores, indicies = scores.topk(top_k)
                 scores = scores.data.numpy()
@@ -441,7 +443,8 @@ def run(
                 e_id = entity_list[0]
                 e_title = id2title[e_id]
                 e_text = id2text[e_id]
-                e_url = id2url[e_id]
+                # e_url = id2url[e_id]
+                e_url = id2url.get(e_id)
                 _print_colorful_prediction(
                     idx, sample, e_id, e_title, e_text, e_url, args.show_url
                 )

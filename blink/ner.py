@@ -6,10 +6,12 @@
 #
 from flair.models import SequenceTagger
 from flair.data import Sentence
+import spacy
 
 
 def get_model(parameters=None):
-    return Flair(parameters)
+    return Spacy(parameters)
+    # return Flair(parameters)
 
 
 class NER_model:
@@ -41,3 +43,24 @@ class Flair(NER_model):
             mentions.extend(sent_mentions)
         return {"sentences": sentences, "mentions": mentions}
 
+
+class Spacy(NER_model):
+    def __init__(self, parameters=None):
+        self.nlp = spacy.load("en_core_web_trf")
+
+    def predict(self, sentences):
+        mentions = []
+        for sent_idx, sent in enumerate(sentences):
+            doc = self.nlp(sent)
+            sent_mentions = []
+            for ent in doc.ents:
+                sent_mentions.append(
+                    {
+                        "sent_idx": sent_idx,
+                        "text": ent.text,
+                        "start_pos": ent.start_char,
+                        "end_pos": ent.end_char,
+                    }
+                )
+            mentions.extend(sent_mentions)
+        return {"sentences": sentences, "mentions": mentions}
