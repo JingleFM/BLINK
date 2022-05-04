@@ -59,7 +59,7 @@ def evaluate(
 
     for step, batch in enumerate(iter_):
         batch = tuple(t.to(device) for t in batch)
-        context_input, candidate_input, _, _ = batch
+        context_input, candidate_input, *_ = batch
         with torch.no_grad():
             eval_loss, logits = reranker(context_input, candidate_input)
 
@@ -145,11 +145,31 @@ def main(params):
         torch.cuda.manual_seed_all(seed)
 
     # Load train data
-    train_samples = utils.read_dataset("train", params["data_path"])
-    logger.info("Read %d train samples." % len(train_samples))
+    # train_samples = utils.read_dataset("train", params["data_path"])
+    # logger.info("Read %d train samples." % len(train_samples))
 
-    train_data, train_tensor_data = data.process_mention_data(
-        train_samples,
+    # train_data, train_tensor_data = data.process_mention_data(
+    #     train_samples,
+    #     tokenizer,
+    #     params["max_context_length"],
+    #     params["max_cand_length"],
+    #     context_key=params["context_key"],
+    #     silent=params["silent"],
+    #     logger=logger,
+    #     debug=params["debug"],
+    # )
+    # if params["shuffle"]:
+    #     train_sampler = RandomSampler(train_tensor_data)
+    # else:
+    #     train_sampler = SequentialSampler(train_tensor_data)
+
+    # train_dataloader = DataLoader(
+    #     train_tensor_data, sampler=train_sampler, batch_size=train_batch_size
+    # )
+
+    train_tensor_data = data.MentionDataset(
+        "train", 
+        params["data_path"],
         tokenizer,
         params["max_context_length"],
         params["max_cand_length"],
@@ -158,22 +178,30 @@ def main(params):
         logger=logger,
         debug=params["debug"],
     )
-    if params["shuffle"]:
-        train_sampler = RandomSampler(train_tensor_data)
-    else:
-        train_sampler = SequentialSampler(train_tensor_data)
-
-    train_dataloader = DataLoader(
-        train_tensor_data, sampler=train_sampler, batch_size=train_batch_size
-    )
+    train_dataloader = DataLoader(train_tensor_data, batch_size=train_batch_size, num_workers=os.cpu_count(), prefetch_factor=2)
 
     # Load eval data
     # TODO: reduce duplicated code here
-    valid_samples = utils.read_dataset("valid", params["data_path"])
-    logger.info("Read %d valid samples." % len(valid_samples))
+    # valid_samples = utils.read_dataset("valid", params["data_path"])
+    # logger.info("Read %d valid samples." % len(valid_samples))
 
-    valid_data, valid_tensor_data = data.process_mention_data(
-        valid_samples,
+    # valid_data, valid_tensor_data = data.process_mention_data(
+    #     valid_samples,
+    #     tokenizer,
+    #     params["max_context_length"],
+    #     params["max_cand_length"],
+    #     context_key=params["context_key"],
+    #     silent=params["silent"],
+    #     logger=logger,
+    #     debug=params["debug"],
+    # )
+    # valid_sampler = SequentialSampler(valid_tensor_data)
+    # valid_dataloader = DataLoader(
+    #     valid_tensor_data, sampler=valid_sampler, batch_size=eval_batch_size
+    # )
+    valid_tensor_data = data.MentionDataset(
+        "valid", 
+        params["data_path"],
         tokenizer,
         params["max_context_length"],
         params["max_cand_length"],
@@ -182,10 +210,8 @@ def main(params):
         logger=logger,
         debug=params["debug"],
     )
-    valid_sampler = SequentialSampler(valid_tensor_data)
-    valid_dataloader = DataLoader(
-        valid_tensor_data, sampler=valid_sampler, batch_size=eval_batch_size
-    )
+    valid_dataloader = DataLoader(valid_tensor_data, batch_size=eval_batch_size, num_workers=os.cpu_count(), prefetch_factor=2)
+
 
     # evaluate before training
     results = evaluate(
@@ -225,7 +251,7 @@ def main(params):
 
         for step, batch in enumerate(iter_):
             batch = tuple(t.to(device) for t in batch)
-            context_input, candidate_input, _, _ = batch
+            context_input, candidate_input, *_ = batch
             loss, _ = reranker(context_input, candidate_input)
 
             # if n_gpu > 1:

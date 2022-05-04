@@ -198,3 +198,122 @@ def process_mention_data(
     else:
         tensor_data = TensorDataset(context_vecs, cand_vecs, label_idx)
     return data, tensor_data
+
+
+import os
+import io
+import json
+from torch.utils.data import DataLoader, SequentialSampler, IterableDataset
+
+
+class MentionDataset(IterableDataset):
+    def __init__(self, 
+        dataset_name, 
+        preprocessed_json_data_parent_folder,
+        tokenizer,
+        max_context_length,
+        max_cand_length,
+        silent,
+        mention_key="mention",
+        context_key="context",
+        label_key="label",
+        title_key='label_title',
+        ent_start_token=ENT_START_TAG,
+        ent_end_token=ENT_END_TAG,
+        title_token=ENT_TITLE_TAG,
+        debug=False,
+        logger=None,
+    ) -> None:
+        super().__init__()
+        self.silent = silent
+        self.debug = debug
+        self.tokenizer = tokenizer
+        self.max_context_length = max_context_length
+        self.mention_key = mention_key
+        self.context_key = context_key
+        self.ent_start_token = ent_start_token
+        self.ent_end_token = ent_end_token
+        self.label_key = label_key
+        self.title_key = title_key
+        self.max_cand_length = max_cand_length
+
+        file_name = "{}.jsonl".format(dataset_name)
+        self.txt_file_path = os.path.join(preprocessed_json_data_parent_folder, file_name)
+
+        with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
+            for idx, _ in enumerate(file):
+                pass
+            self.len = idx + 1
+
+    def __len__(self):
+        return self.len
+
+    def __iter__(self):
+        use_world = True
+
+        # Get total number of workers and worker id
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            num_workers = 1
+            worker_id = 0
+        else:
+            num_workers = worker_info.num_workers
+            worker_id = worker_info.id
+
+        num_workers = max(num_workers, 1)
+
+        with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
+            for idx, line in enumerate(file):
+                if (idx+1)%num_workers != worker_id:
+                    continue
+
+                sample = json.loads(line.strip())
+                context_tokens = get_context_representation(
+                    sample,
+                    self.tokenizer,
+                    self.max_context_length,
+                    self.mention_key,
+                    self.context_key,
+                    self.ent_start_token,
+                    self.ent_end_token,
+                )
+
+                label = sample[self.label_key]
+                title = sample.get(self.title_key, None)
+                label_tokens = get_candidate_representation(
+                    label, self.tokenizer, self.max_cand_length, title,
+                )
+                label_idx = int(sample["label_id"])
+
+                record = {
+                    "context": context_tokens,
+                    "label": label_tokens,
+                    "label_idx": [label_idx],
+                }
+
+                if "world" in sample:
+                    src = sample["world"]
+                    src = world_to_id[src]
+                    record["src"] = [src]
+                    use_world = True
+                else:
+                    use_world = False
+
+                context_vec = torch.tensor(
+                    record['context']['ids'], dtype=torch.long,
+                )
+                cand_vec = torch.tensor(
+                    record['label']['ids'], dtype=torch.long,
+                )
+                if use_world:
+                    src_vec = torch.tensor(
+                        record['src'], dtype=torch.long,
+                    )
+                label_idx = torch.tensor(
+                    record['label_idx'], dtype=torch.long,
+                )
+
+                if use_world:
+                    yield (context_vec, cand_vec, src_vec, label_idx)
+                else:
+                    yield (context_vec, cand_vec, label_idx)

@@ -6,8 +6,9 @@
 #
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
-from elq.biencoder.biencoder import load_biencoder
-import elq.candidate_ranking.utils as utils
+from blink.biencoder.biencoder import load_biencoder
+import blink.biencoder.data_process as data
+import blink.candidate_ranking.utils as utils
 import json
 import sys
 import os
@@ -49,21 +50,81 @@ def encode_candidate(
     return cand_encode_list
 
 
-def load_candidate_pool(
+def load_entity_dict(logger, params):
+    path = params.get("entity_dict_path", None)
+    assert path is not None, "Error! entity_dict_path is empty."
+    # path = "/home/abhinav/Projects/JingleFM/BLINK/data/jinglefm/documents/documents-a_j_s.jsonl"
+
+    entity_list = []
+    logger.info("Loading entity description from path: " + path)
+    with open(path, 'rt') as f:
+        for line in f:
+            sample = json.loads(line.rstrip())
+            title = sample['title']
+            text = sample.get("text", "").strip()
+            entity_list.append((title, text))
+
+    return entity_list
+
+
+def get_candidate_pool_tensor(
+    entity_desc_list,
+    tokenizer,
+    max_seq_length,
+    logger,
+):
+    # TODO: add multiple thread process
+    logger.info("Convert candidate text to id")
+    cand_pool = [] 
+    for entity_desc in tqdm(entity_desc_list):
+        if type(entity_desc) is tuple:
+            title, entity_text = entity_desc
+        else:
+            title = None
+            entity_text = entity_desc
+
+        rep = data.get_candidate_representation(
+                entity_text, 
+                tokenizer, 
+                max_seq_length,
+                title,
+        )
+        cand_pool.append(rep["ids"])
+
+    cand_pool = torch.LongTensor(cand_pool) 
+    return cand_pool
+
+
+
+def load_or_generate_candidate_pool(
     tokenizer,
     params,
     logger,
     cand_pool_path,
 ):
     candidate_pool = None
-    # try to load candidate pool from file
-    try:
-        logger.info("Loading pre-generated candidate pool from: ")
-        logger.info(cand_pool_path)
-        candidate_pool = torch.load(cand_pool_path)
-    except:
-        logger.info("Loading failed.")
-    assert candidate_pool is not None
+    if cand_pool_path is not None:
+        # try to load candidate pool from file
+        try:
+            logger.info("Loading pre-generated candidate pool from: ")
+            logger.info(cand_pool_path)
+            candidate_pool = torch.load(cand_pool_path)
+        except:
+            logger.info("Loading failed. Generating candidate pool")
+
+    if candidate_pool is None:
+        # compute candidate pool from entity list
+        entity_desc_list = load_entity_dict(logger, params)
+        candidate_pool = get_candidate_pool_tensor(
+            entity_desc_list,
+            tokenizer,
+            params["max_cand_length"],
+            logger,
+        )
+
+        if cand_pool_path is not None:
+            logger.info("Saving candidate pool.")
+            torch.save(candidate_pool, cand_pool_path)
 
     return candidate_pool
 
@@ -81,7 +142,7 @@ parser.add_argument('--compare_saved_embeds', type=str, help='compare against th
 parser.add_argument('--batch_size', type=int, default=512, help='batch size for encoding candidate vectors (default 512)')
 
 parser.add_argument('--chunk_start', type=int, default=0, help='example idx to start encoding at (for parallelizing encoding process)')
-parser.add_argument('--chunk_end', type=int, default=-1, help='example idx to stop encoding at (for parallelizing encoding process)')
+parser.add_argument('--chunk_end', type=int, default=None, help='example idx to stop encoding at (for parallelizing encoding process)')
 
 
 args = parser.parse_args()
@@ -119,7 +180,7 @@ baseline_candidate_encoding = None
 if getattr(args, 'compare_saved_embeds', None) is not None:
     baseline_candidate_encoding = torch.load(getattr(args, 'compare_saved_embeds'))
 
-candidate_pool = load_candidate_pool(
+candidate_pool = load_or_generate_candidate_pool(
     biencoder.tokenizer,
     biencoder_params,
     logger,

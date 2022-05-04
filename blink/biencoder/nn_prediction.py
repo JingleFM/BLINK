@@ -55,13 +55,20 @@ def get_topk_predictions(
     oid = 0
     for step, batch in enumerate(iter_):
         batch = tuple(t.to(device) for t in batch)
-        context_input, _, srcs, label_ids = batch
+        if is_zeshel:
+            context_input, _, srcs, label_ids = batch
+        else:
+            context_input, _, label_ids = batch
+            srcs = torch.tensor([0] * context_input.size(0), device=device)
+
         src = srcs[0].item()
+        cand_encode_list[src] = cand_encode_list[src].to(device)
         scores = reranker.score_candidate(
             context_input, 
             None, 
-            cand_encs=cand_encode_list[src].to(device)
+            cand_encs=cand_encode_list[src]
         )
+
         values, indicies = scores.topk(top_k)
         old_src = src
         for i in range(context_input.size(0)):
@@ -93,7 +100,7 @@ def get_topk_predictions(
                 continue
 
             # add examples in new_data
-            cur_candidates = candidate_pool[src][inds]
+            cur_candidates = candidate_pool[srcs[i].item()][inds]
             nn_context.append(context_input[i].cpu().tolist())
             nn_candidates.append(cur_candidates.cpu().tolist())
             nn_labels.append(pointer)

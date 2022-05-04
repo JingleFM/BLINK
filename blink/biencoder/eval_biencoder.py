@@ -39,7 +39,7 @@ def load_entity_dict(logger, params, is_zeshel):
             title = sample['title']
             text = sample.get("text", "").strip()
             entity_list.append((title, text))
-            if params["debug"] and len(entity_list) > 200:
+            if params["debug"] and len(entity_list) > 20000:
                 break
 
     return entity_list
@@ -252,27 +252,40 @@ def main(params):
             logger.info("Saving candidate encoding to file " + cand_encode_path)
             torch.save(candidate_encoding, cand_encode_path)
 
-
+    torch.cuda.empty_cache()
     test_samples = utils.read_dataset(params["mode"], params["data_path"])
     logger.info("Read %d test samples." % len(test_samples))
    
-    test_data, test_tensor_data = data.process_mention_data(
-        test_samples,
+    # test_data, test_tensor_data = data.process_mention_data(
+    #     test_samples,
+    #     tokenizer,
+    #     params["max_context_length"],
+    #     params["max_cand_length"],
+    #     context_key=params['context_key'],
+    #     silent=params["silent"],
+    #     logger=logger,
+    #     debug=params["debug"],
+    # )
+    # test_sampler = SequentialSampler(test_tensor_data)
+    # test_dataloader = DataLoader(
+    #     test_tensor_data, 
+    #     sampler=test_sampler, 
+    #     batch_size=params["eval_batch_size"]
+    # )
+
+    test_tensor_data = data.MentionDataset(
+        params["mode"], 
+        params["data_path"],
         tokenizer,
         params["max_context_length"],
         params["max_cand_length"],
-        context_key=params['context_key'],
+        context_key=params["context_key"],
         silent=params["silent"],
         logger=logger,
         debug=params["debug"],
     )
-    test_sampler = SequentialSampler(test_tensor_data)
-    test_dataloader = DataLoader(
-        test_tensor_data, 
-        sampler=test_sampler, 
-        batch_size=params["eval_batch_size"]
-    )
-    
+    test_dataloader = DataLoader(test_tensor_data, batch_size=params["eval_batch_size"], num_workers=os.cpu_count(), prefetch_factor=2)
+
     save_results = params.get("save_topk_result")
     new_data = nnquery.get_topk_predictions(
         reranker,

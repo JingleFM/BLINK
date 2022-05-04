@@ -85,8 +85,7 @@ class BlinkParser(argparse.ArgumentParser):
         )
         parser.add_argument(
             "--zeshel",
-            default=True,
-            type=bool,
+            action="store_true",
             help="Whether the dataset is from zeroshot.",
         )
 
@@ -271,4 +270,10 @@ class BlinkParser(argparse.ArgumentParser):
             default=None,
             type=str,
             help="Path for cached candidate encoding",
+        )
+
+        parser.add_argument(
+            "--entity_dict_path",
+            type=str,
+            help="Path to candidate entity dictionary",
         )
