@@ -83,7 +83,8 @@ class BiEncoderRanker(torch.nn.Module):
         self.build_model()
         model_path = params.get("path_to_model", None)
         if model_path is not None:
-            self.load_model(model_path)
+            flag = not (torch.cuda.is_available() and not params["no_cuda"])
+            self.load_model(model_path, cpu=flag)
 
         self.model = self.model.to(self.device)
         self.data_parallel = params.get("data_parallel")
@@ -92,7 +93,7 @@ class BiEncoderRanker(torch.nn.Module):
 
     def load_model(self, fname, cpu=False):
         if cpu:
-            state_dict = torch.load(fname, map_location=lambda storage, location: "cpu")
+            state_dict = torch.load(fname, map_location="cpu")
         else:
             state_dict = torch.load(fname)
         self.model.load_state_dict(state_dict)
