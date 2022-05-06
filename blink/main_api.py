@@ -12,90 +12,20 @@ from tqdm import tqdm
 import logging
 import torch
 import numpy as np
-from colorama import init
-from termcolor import colored
 
 import blink.ner as NER
 from torch.utils.data import DataLoader, SequentialSampler, TensorDataset
 from blink.biencoder.biencoder import BiEncoderRanker, load_biencoder
-from blink.crossencoder.crossencoder import CrossEncoderRanker, load_crossencoder
 from blink.biencoder.data_process import (
     process_mention_data,
     get_candidate_representation,
 )
 import blink.candidate_ranking.utils as utils
-from blink.crossencoder.train_cross import modify, evaluate
-from blink.crossencoder.data_process import prepare_crossencoder_data
 from blink.indexer.faiss_indexer import FaissIndexer
 
 
-HIGHLIGHTS = [
-    "on_red",
-    "on_green",
-    "on_yellow",
-    "on_blue",
-    "on_magenta",
-    "on_cyan",
-]
-
-
-def _print_colorful_text(input_sentence, samples):
-    init()  # colorful output
-    msg = ""
-    if samples and (len(samples) > 0):
-        msg += input_sentence[0 : int(samples[0]["start_pos"])]
-        for idx, sample in enumerate(samples):
-            msg += colored(
-                input_sentence[int(sample["start_pos"]) : int(sample["end_pos"])],
-                "grey",
-                HIGHLIGHTS[idx % len(HIGHLIGHTS)],
-            )
-            if idx < len(samples) - 1:
-                msg += input_sentence[
-                    int(sample["end_pos"]) : int(samples[idx + 1]["start_pos"])
-                ]
-            else:
-                msg += input_sentence[int(sample["end_pos"]) :]
-    else:
-        msg = input_sentence
-        print("Failed to identify entity from text:")
-    print("\n" + str(msg) + "\n")
-
-
-def _print_colorful_prediction(
-    idx, sample, e_id
-):
-    print(colored(sample["mention"], "grey", HIGHLIGHTS[idx % len(HIGHLIGHTS)]))
-    to_print = "id:{}\n".format(e_id)
-    print(to_print)
-
-
-def _annotate(ner_model, input_sentences):
-    ner_output_data = ner_model.predict(input_sentences)
-    sentences = ner_output_data["sentences"]
-    mentions = ner_output_data["mentions"]
-    samples = []
-    for mention in mentions:
-        record = {}
-        record["label"] = "unknown"
-        record["label_id"] = -1
-        # LOWERCASE EVERYTHING !
-        record["context_left"] = sentences[mention["sent_idx"]][
-            : mention["start_pos"]
-        ].lower()
-        record["context_right"] = sentences[mention["sent_idx"]][
-            mention["end_pos"] :
-        ].lower()
-        record["mention"] = mention["text"].lower()
-        record["start_pos"] = int(mention["start_pos"])
-        record["end_pos"] = int(mention["end_pos"])
-        record["sent_idx"] = mention["sent_idx"]
-        samples.append(record)
-    return samples
-
-
 def _load_candidates(
-    entity_encoding, faiss_index=None, index_path=None, logger=None
+    entity_catalogue, entity_encoding, faiss_index=None, index_path=None, logger=None
 ):
     # only load candidate encoding if not using faiss index
     if faiss_index is None:
@@ -109,8 +39,18 @@ def _load_candidates(
         indexer = FaissIndexer(faiss_index, 1024)
         indexer.deserialize_from(index_path)
 
+    # load all the 5903527 entities
+    id2entity = {}
+    local_idx = 0
+    with open(entity_catalogue, "r") as fin:
+        lines = fin.readlines()
+        for line in lines:
+            entity = json.loads(line)
+            id2entity[local_idx] = {k:v for k,v in entity.items() if k in ["id", "title"]}
+            local_idx += 1
     return (
         candidate_encoding,
+        id2entity,
         indexer,
     )
 
@@ -134,13 +74,11 @@ def _process_biencoder_dataloader(samples, tokenizer, biencoder_params):
 
 def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, indexer=None):
     biencoder.model.eval()
-    device = biencoder.device
     labels = []
     nns = []
     all_scores = []
     for batch in tqdm(dataloader):
         context_input, _, label_ids = batch
-        context_input = context_input.to(device)
         with torch.no_grad():
             if indexer is not None:
                 context_encoding = biencoder.encode_context(context_input).numpy()
@@ -148,7 +86,7 @@ def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, indexer
                 scores, indicies = indexer.search_knn(context_encoding, top_k)
             else:
                 scores = biencoder.score_candidate(
-                    context_input, None, cand_encs=candidate_encoding.to(device)
+                    context_input, None, cand_encs=candidate_encoding  # .to(device)
                 )
                 scores, indicies = scores.topk(top_k)
                 scores = scores.data.numpy()
@@ -175,11 +113,13 @@ def load_models(args, logger=None):
         logger.info("loading candidate entities")
     (
         candidate_encoding,
+        id2entity,
         faiss_indexer,
     ) = _load_candidates(
+        args.entity_catalogue, 
         args.entity_encoding, 
         faiss_index=getattr(args, 'faiss_index', None), 
-        index_path=getattr(args, 'index_path' , None),
+        index_path=getattr(args, 'index_path', None),
         logger=logger,
     )
 
@@ -187,6 +127,7 @@ def load_models(args, logger=None):
         biencoder,
         biencoder_params,
         candidate_encoding,
+        id2entity,
         faiss_indexer,
     )
 
@@ -197,117 +138,85 @@ def run(
     biencoder,
     biencoder_params,
     candidate_encoding,
+    id2entity,
     faiss_indexer=None,
+    test_data=None,
 ):
-    stopping_condition = False
-    while not stopping_condition:
 
-        samples = None
-
-        if args.interactive:
-            logger.info("interactive mode")
-
-            # biencoder_params["eval_batch_size"] = 1
-
-            # Load NER model
-            ner_model = NER.get_model()
-
-            # Interactive
-            text = input("insert text:")
-
-            # Identify mentions
-            samples = _annotate(ner_model, [text])
-
-            _print_colorful_text(text, samples)
-
-        # don't look at labels
-        keep_all = (
-            args.interactive
-            or samples[0]["label"] == "unknown"
-            or samples[0]["label_id"] < 0
+    if not test_data:
+        msg = (
+            "ERROR: you must start BLINK and "
+            "pass in input test mentions (--test_mentions)"
         )
+        raise ValueError(msg)
 
-        # prepare the data for biencoder
-        if logger:
-            logger.info("preparing data for biencoder")
-        dataloader = _process_biencoder_dataloader(
-            samples, biencoder.tokenizer, biencoder_params
-        )
+    samples = test_data
 
-        # run biencoder
-        if logger:
-            logger.info("run biencoder")
+    # don't look at labels
+    keep_all = (
+        samples[0]["label"] == "unknown"
+        or samples[0]["label_id"] < 0
+    )
+
+    # prepare the data for biencoder
+    if logger:
+        logger.info("preparing data for biencoder")
+    dataloader = _process_biencoder_dataloader(
+        samples, biencoder.tokenizer, biencoder_params
+    )
+
+    # run biencoder
+    if logger:
+        logger.info("run biencoder")
+    top_k = args.top_k
+    labels, nns, scores = _run_biencoder(
+        biencoder, dataloader, candidate_encoding, top_k, faiss_indexer
+    )
+
+    biencoder_accuracy = -1
+    recall_at = -1
+    if not keep_all:
+        # get recall values
         top_k = args.top_k
-        labels, nns, scores = _run_biencoder(
-            biencoder, dataloader, candidate_encoding, top_k, faiss_indexer
-        )
+        x = []
+        y = []
+        for i in range(1, top_k):
+            temp_y = 0.0
+            for label, top in zip(labels, nns):
+                if label in top[:i]:
+                    temp_y += 1
+            if len(labels) > 0:
+                temp_y /= len(labels)
+            x.append(i)
+            y.append(temp_y)
+        # plt.plot(x, y)
+        biencoder_accuracy = y[0]
+        recall_at = y[-1]
+        print("biencoder accuracy: %.4f" % biencoder_accuracy)
+        print("biencoder recall@%d: %.4f" % (top_k, y[-1]))
 
-        if args.interactive:
+    predictions = []
+    for entity_list in nns:
+        sample_prediction = []
+        for e_id in entity_list:
+            entity = id2entity[e_id]
+            sample_prediction.append(entity)
+        predictions.append(sample_prediction)
 
-            print("\nfast (biencoder) predictions:")
-
-            _print_colorful_text(text, samples)
-
-            # print biencoder prediction
-            idx = 0
-            for entity_list, sample in zip(nns, samples):
-                e_id = entity_list[0]
-                _print_colorful_prediction(
-                    idx, sample, e_id
-                )
-                idx += 1
-            print()
-
-        else:
-
-            biencoder_accuracy = -1
-            recall_at = -1
-            if not keep_all:
-                # get recall values
-                top_k = args.top_k
-                x = []
-                y = []
-                for i in range(1, top_k):
-                    temp_y = 0.0
-                    for label, top in zip(labels, nns):
-                        if label in top[:i]:
-                            temp_y += 1
-                    if len(labels) > 0:
-                        temp_y /= len(labels)
-                    x.append(i)
-                    y.append(temp_y)
-                # plt.plot(x, y)
-                biencoder_accuracy = y[0]
-                recall_at = y[-1]
-                print("biencoder accuracy: %.4f" % biencoder_accuracy)
-                print("biencoder recall@%d: %.4f" % (top_k, y[-1]))
-
-
-            predictions = []
-            for entity_list in nns:
-                sample_prediction = []
-                for e_id in entity_list:
-                    sample_prediction.append(e_id)
-                predictions.append(sample_prediction)
-
-            # use only biencoder
-            return (
-                biencoder_accuracy,
-                recall_at,
-                -1,
-                -1,
-                len(samples),
-                predictions,
-                scores,
-            )
+    # use only biencoder
+    return (
+        biencoder_accuracy,
+        recall_at,
+        -1,
+        -1,
+        len(samples),
+        predictions,
+        scores,
+    )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--interactive", "-i", action="store_true", help="Interactive mode."
-    )
 
     # biencoder
     parser.add_argument(
@@ -323,6 +232,14 @@ if __name__ == "__main__":
         type=str,
         default="models/biencoder_wiki_large.json",
         help="Path to the biencoder configuration.",
+    )
+    parser.add_argument(
+        "--entity_catalogue",
+        dest="entity_catalogue",
+        type=str,
+        # default="models/tac_entity.jsonl",  # TAC-KBP
+        default="models/entity.jsonl",  # ALL WIKIPEDIA!
+        help="Path to the entity catalogue.",
     )
     parser.add_argument(
         "--entity_encoding",
@@ -351,7 +268,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--faiss_index", type=str, default=None, help="faiss index factory",
+        "--faiss_index", type=str, default=None, help="whether to use faiss index",
     )
 
     parser.add_argument(
