@@ -253,8 +253,8 @@ def main(params):
             torch.save(candidate_encoding, cand_encode_path)
 
     torch.cuda.empty_cache()
-    test_samples = utils.read_dataset(params["mode"], params["data_path"])
-    logger.info("Read %d test samples." % len(test_samples))
+    # test_samples = utils.read_dataset(params["mode"], params["data_path"])
+    # logger.info("Read %d test samples." % len(test_samples))
    
     # test_data, test_tensor_data = data.process_mention_data(
     #     test_samples,
