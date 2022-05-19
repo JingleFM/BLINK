@@ -41,6 +41,20 @@ logger = None
 
 
 def modify(context_input, candidate_input, max_seq_length):
+    # Context input n x d
+    # Candidate input n x m x d
+    # Result n x m x max_seq_length
+
+    batch_size = context_input.size(0)
+    num_candidates = candidate_input.size(1)
+    max_seq_length = min(max_seq_length, context_input.size(1))
+
+    context_input = context_input[:, :max_seq_length]
+    candidate_input = candidate_input[:, :, :max_seq_length]
+
+    context_input = context_input.unsqueeze(1).expand(batch_size, num_candidates, max_seq_length)
+
+
     new_input = []
     context_input = context_input.tolist()
     candidate_input = candidate_input.tolist()

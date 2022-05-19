@@ -10,8 +10,6 @@ import torch
 from tqdm import tqdm, trange
 from torch.utils.data import DataLoader, TensorDataset
 
-from pytorch_transformers.tokenization_bert import BertTokenizer
-
 from blink.biencoder.zeshel_utils import world_to_id
 from blink.common.params import ENT_START_TAG, ENT_END_TAG, ENT_TITLE_TAG
 
@@ -243,7 +241,9 @@ class MentionDataset(IterableDataset):
         with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
             for idx, _ in enumerate(file):
                 pass
-            self.len = idx + 1
+            idx += 1
+            # idx = idx // 3
+            self.len = idx
 
     def __len__(self):
         return self.len
@@ -264,6 +264,8 @@ class MentionDataset(IterableDataset):
 
         with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
             for idx, line in enumerate(file):
+                # if idx%3 != 0:
+                #     continue
                 if (idx+1)%num_workers != worker_id:
                     continue
 
