@@ -244,7 +244,7 @@ class MentionDataset(IterableDataset):
             for idx, _ in enumerate(file):
                 pass
             idx += 1
-            idx = idx // 3
+            # idx = idx // 3
             self.len = idx
 
     def __len__(self):
@@ -266,8 +266,8 @@ class MentionDataset(IterableDataset):
 
         with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
             for idx, line in enumerate(file):
-                if idx%3 != 0:
-                    continue
+                # if idx%3 != 0:
+                #     continue
                 if (idx+1)%num_workers != worker_id:
                     continue
 
