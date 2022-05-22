@@ -124,6 +124,8 @@ def process_mention_data(
     use_world = True
 
     for idx, sample in enumerate(iter_):
+        # This try-except block is for the case that the mention tokens are exactly 30 in number
+        # Read more about this issue here: https://github.com/facebookresearch/BLINK/issues/57
         context_tokens = get_context_representation(
             sample,
             tokenizer,
@@ -242,7 +244,7 @@ class MentionDataset(IterableDataset):
             for idx, _ in enumerate(file):
                 pass
             idx += 1
-            # idx = idx // 3
+            idx = idx // 3
             self.len = idx
 
     def __len__(self):
@@ -264,21 +266,24 @@ class MentionDataset(IterableDataset):
 
         with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
             for idx, line in enumerate(file):
-                # if idx%3 != 0:
-                #     continue
+                if idx%3 != 0:
+                    continue
                 if (idx+1)%num_workers != worker_id:
                     continue
 
                 sample = json.loads(line.strip())
-                context_tokens = get_context_representation(
-                    sample,
-                    self.tokenizer,
-                    self.max_context_length,
-                    self.mention_key,
-                    self.context_key,
-                    self.ent_start_token,
-                    self.ent_end_token,
-                )
+                try:
+                    context_tokens = get_context_representation(
+                        sample,
+                        self.tokenizer,
+                        self.max_context_length,
+                        self.mention_key,
+                        self.context_key,
+                        self.ent_start_token,
+                        self.ent_end_token,
+                    )
+                except AssertionError as e:
+                    continue
 
                 label = sample[self.label_key]
                 title = sample.get(self.title_key, None)
