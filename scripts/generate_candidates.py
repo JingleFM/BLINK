@@ -76,6 +76,7 @@ def get_candidate_pool_tensor(
     # TODO: add multiple thread process
     logger.info("Convert candidate text to id")
     cand_pool = [] 
+    chunk = 0
     for entity_desc in tqdm(entity_desc_list):
         if type(entity_desc) is tuple:
             title, entity_text = entity_desc
@@ -90,8 +91,26 @@ def get_candidate_pool_tensor(
                 title,
         )
         cand_pool.append(rep["ids"])
+        if len(cand_pool) > 100000:
+            cand_pool = torch.LongTensor(cand_pool)
+            torch.save(cand_pool, "/tmp/candidate_pool_%d.pt" % chunk)
+            chunk += 1
+            cand_pool = []
 
-    cand_pool = torch.LongTensor(cand_pool) 
+    if len(cand_pool) > 0:  
+        cand_pool = torch.LongTensor(cand_pool)
+        torch.save(cand_pool, "/tmp/candidate_pool_%d.pt" % chunk)
+        chunk += 1
+        cand_pool = []
+
+    for i in range(chunk):
+        if i == 0:
+            cand_pool = torch.load("/tmp/candidate_pool_%d.pt" % i)
+        else:
+            cand_pool = torch.cat((cand_pool, torch.load("/tmp/candidate_pool_%d.pt" % i)))
+        os.remove("/tmp/candidate_pool_%d.pt" % i)
+
+    # cand_pool = torch.LongTensor(cand_pool) 
     return cand_pool
 
 
