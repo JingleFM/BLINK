@@ -145,3 +145,78 @@ def prepare_crossencoder_data(
         candidate_input,
         label_input,
     )
+
+
+import bz2
+import os
+import json
+from glob import glob
+from torch.utils.data import IterableDataset
+
+class CrossencoderDataset(IterableDataset):
+    def __init__(self, dataset_name, preprocessed_json_data_parent_folder, max_seq_length) -> None:
+        super().__init__()
+
+        self.max_seq_length = max_seq_length
+        self.fnames = glob(os.path.join(preprocessed_json_data_parent_folder, dataset_name, "*.json.bz2"))
+        self.fnames = sorted(self.fnames)
+        # idx = 0
+        # for fname in self.fnames:
+        #     with bz2.open(fname, mode="rt", encoding="utf-8") as file:
+        #         j = json.load(file)
+        #         idx += len(j['context_vecs'])
+        # self.len = idx
+        self.len = int(1e6)
+
+    def __len__(self):
+        return self.len
+
+    @staticmethod
+    def modify(context_input, candidate_input, max_seq_length):
+        # # Context input n x d
+        # # Candidate input n x m x d
+        # # Result n x m x max_seq_length
+
+        # batch_size = context_input.size(0)
+        # num_candidates = candidate_input.size(1)
+        # max_seq_length = min(max_seq_length, context_input.size(1))
+
+        # context_input = context_input[:, :max_seq_length]
+        # candidate_input = candidate_input[:, :, :max_seq_length]
+
+        # context_input = context_input.unsqueeze(1).expand(batch_size, num_candidates, max_seq_length)
+
+
+        new_input = []
+        context_input = context_input.tolist()
+        candidate_input = candidate_input.tolist()
+
+        for i in range(len(context_input)):
+            cur_input = context_input[i]
+            cur_candidate = candidate_input[i]
+            mod_input = []
+            for j in range(len(cur_candidate)):
+                # remove [CLS] token from candidate
+                sample = cur_input + cur_candidate[j][1:]
+                sample = sample[:max_seq_length]
+                mod_input.append(sample)
+
+            new_input.append(mod_input)
+
+        return torch.LongTensor(new_input)
+
+
+    def __iter__(self):
+        for fname in self.fnames:
+            with bz2.open(fname, mode="rt", encoding="utf-8") as file:
+                j = json.load(file)
+                for context_vec, cand_vecs, label_idx in zip(j['context_vecs'], j['candidate_vecs'], j['labels']):
+                    # Convert to long tensor
+                    context_vec = torch.LongTensor(context_vec).unsqueeze(0)
+                    cand_vecs = torch.LongTensor(cand_vecs).unsqueeze(0)
+                    # label_idx = torch.LongTensor(label_idx).unsqueeze(0)
+
+                    # Modify the input
+                    crossencoder_input = self.modify(context_vec, cand_vecs, self.max_seq_length)
+                    crossencoder_input = crossencoder_input.squeeze(0)
+                    yield crossencoder_input, label_idx

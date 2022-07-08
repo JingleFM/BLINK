@@ -31,7 +31,7 @@ from blink.crossencoder.crossencoder import CrossEncoderRanker, load_crossencode
 import logging
 
 import blink.candidate_ranking.utils as utils
-import blink.biencoder.data_process as data
+import blink.crossencoder.data_process as data
 from blink.biencoder.zeshel_utils import DOC_PATH, WORLDS, world_to_id
 from blink.common.optimizer import get_bert_optimizer
 from blink.common.params import BlinkParser
@@ -213,54 +213,64 @@ def main(params):
     max_seq_length = params["max_seq_length"]
     context_length = params["max_context_length"]
     
-    fname = os.path.join(params["data_path"], "train.t7")
-    train_data = torch.load(fname)
-    context_input = train_data["context_vecs"]
-    candidate_input = train_data["candidate_vecs"]
-    label_input = train_data["labels"]
-    if params["debug"]:
-        max_n = 200
-        context_input = context_input[:max_n]
-        candidate_input = candidate_input[:max_n]
-        label_input = label_input[:max_n]
+    # fname = os.path.join(params["data_path"], "train.t7")
+    # train_data = torch.load(fname)
+    # context_input = train_data["context_vecs"]
+    # candidate_input = train_data["candidate_vecs"]
+    # label_input = train_data["labels"]
+    # if params["debug"]:
+    #     max_n = 200
+    #     context_input = context_input[:max_n]
+    #     candidate_input = candidate_input[:max_n]
+    #     label_input = label_input[:max_n]
 
-    context_input = modify(context_input, candidate_input, max_seq_length)
-    if params["zeshel"]:
-        src_input = train_data['worlds'][:len(context_input)]
-        train_tensor_data = TensorDataset(context_input, label_input, src_input)
-    else:
-        train_tensor_data = TensorDataset(context_input, label_input)
-    train_sampler = RandomSampler(train_tensor_data)
+    # context_input = modify(context_input, candidate_input, max_seq_length)
+    # if params["zeshel"]:
+    #     src_input = train_data['worlds'][:len(context_input)]
+    #     train_tensor_data = TensorDataset(context_input, label_input, src_input)
+    # else:
+    #     train_tensor_data = TensorDataset(context_input, label_input)
+    # train_sampler = RandomSampler(train_tensor_data)
 
+    # train_dataloader = DataLoader(
+    #     train_tensor_data, 
+    #     sampler=train_sampler, 
+    #     batch_size=params["train_batch_size"]
+    # )
+    train_tensor_data = data.CrossencoderDataset("train", params["data_path"], params["max_seq_length"])
     train_dataloader = DataLoader(
-        train_tensor_data, 
-        sampler=train_sampler, 
-        batch_size=params["train_batch_size"]
+        train_tensor_data,
+        batch_size=params["train_batch_size"],
     )
 
-    fname = os.path.join(params["data_path"], "valid.t7")
-    valid_data = torch.load(fname)
-    context_input = valid_data["context_vecs"]
-    candidate_input = valid_data["candidate_vecs"]
-    label_input = valid_data["labels"]
-    if params["debug"]:
-        max_n = 200
-        context_input = context_input[:max_n]
-        candidate_input = candidate_input[:max_n]
-        label_input = label_input[:max_n]
+    # fname = os.path.join(params["data_path"], "valid.t7")
+    # valid_data = torch.load(fname)
+    # context_input = valid_data["context_vecs"]
+    # candidate_input = valid_data["candidate_vecs"]
+    # label_input = valid_data["labels"]
+    # if params["debug"]:
+    #     max_n = 200
+    #     context_input = context_input[:max_n]
+    #     candidate_input = candidate_input[:max_n]
+    #     label_input = label_input[:max_n]
 
-    context_input = modify(context_input, candidate_input, max_seq_length)
-    if params["zeshel"]:
-        src_input = valid_data["worlds"][:len(context_input)]
-        valid_tensor_data = TensorDataset(context_input, label_input, src_input)
-    else:
-        valid_tensor_data = TensorDataset(context_input, label_input)
-    valid_sampler = SequentialSampler(valid_tensor_data)
+    # context_input = modify(context_input, candidate_input, max_seq_length)
+    # if params["zeshel"]:
+    #     src_input = valid_data["worlds"][:len(context_input)]
+    #     valid_tensor_data = TensorDataset(context_input, label_input, src_input)
+    # else:
+    #     valid_tensor_data = TensorDataset(context_input, label_input)
+    # valid_sampler = SequentialSampler(valid_tensor_data)
 
+    # valid_dataloader = DataLoader(
+    #     valid_tensor_data, 
+    #     sampler=valid_sampler, 
+    #     batch_size=params["eval_batch_size"]
+    # )
+    valid_tensor_data = data.CrossencoderDataset("valid", params["data_path"], params["max_seq_length"])
     valid_dataloader = DataLoader(
-        valid_tensor_data, 
-        sampler=valid_sampler, 
-        batch_size=params["eval_batch_size"]
+        valid_tensor_data,
+        batch_size=params["eval_batch_size"],
     )
 
     # evaluate before training
