@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 #
 
+import bz2
 import json
 import logging
 import torch
@@ -24,6 +25,7 @@ def get_topk_predictions(
     top_k=10,
     is_zeshel=False,
     save_predictions=False,
+    save_data_dir=None,
 ):
     reranker.model.eval()
     device = reranker.device
@@ -53,6 +55,7 @@ def get_topk_predictions(
         stats[i] = Stats(top_k)
     
     oid = 0
+    num_saves = 0
     for step, batch in enumerate(iter_):
         batch = tuple(t.to(device) for t in batch)
         if is_zeshel:
@@ -106,6 +109,36 @@ def get_topk_predictions(
             nn_labels.append(pointer)
             nn_worlds.append(src)
 
+        # Save data to disk every 1000 batches
+        if save_predictions and step%1000 and step!=0:
+            with bz2.open(f"{save_data_dir}/{num_saves}.json.bz2", mode="wt", encoding='utf-8') as f:
+                # nn_context = torch.LongTensor(nn_context)
+                # nn_candidates = torch.LongTensor(nn_candidates)
+                # nn_labels = torch.LongTensor(nn_labels)
+                j = {"context_vecs": nn_context, "candidate_vecs": nn_candidates, "labels": nn_labels}
+                if is_zeshel:
+                    # nn_worlds = torch.LongTensor(nn_worlds)
+                    j["worlds"] = nn_worlds
+                json.dump(j, f)
+            nn_context = []
+            nn_candidates = []
+            nn_labels = []
+            nn_worlds = []
+            num_saves += 1
+
+    # Save remaining data
+    if save_predictions and len(nn_context):
+        with bz2.open(f"{save_data_dir}/{num_saves}.json.bz2", mode="wt", encoding='utf-8') as f:
+            # nn_context = torch.LongTensor(nn_context)
+            # nn_candidates = torch.LongTensor(nn_candidates)
+            # nn_labels = torch.LongTensor(nn_labels)
+            j = {"context_vecs": nn_context, "candidate_vecs": nn_candidates, "labels": nn_labels}
+            if is_zeshel:
+                # nn_worlds = torch.LongTensor(nn_worlds)
+                j["worlds"] = nn_worlds
+            json.dump(j, f)
+            num_saves += 1
+
     res = Stats(top_k)
     for src in range(world_size):
         if stats[src].cnt == 0:
@@ -118,17 +151,17 @@ def get_topk_predictions(
 
     logger.info(res.output())
 
-    nn_context = torch.LongTensor(nn_context)
-    nn_candidates = torch.LongTensor(nn_candidates)
-    nn_labels = torch.LongTensor(nn_labels)
-    nn_data = {
-        'context_vecs': nn_context,
-        'candidate_vecs': nn_candidates,
-        'labels': nn_labels,
-    }
+    # nn_context = torch.LongTensor(nn_context)
+    # nn_candidates = torch.LongTensor(nn_candidates)
+    # nn_labels = torch.LongTensor(nn_labels)
+    # nn_data = {
+    #     'context_vecs': nn_context,
+    #     'candidate_vecs': nn_candidates,
+    #     'labels': nn_labels,
+    # }
 
-    if is_zeshel:
-        nn_data["worlds"] = torch.LongTensor(nn_worlds)
+    # if is_zeshel:
+    #     nn_data["worlds"] = torch.LongTensor(nn_worlds)
     
-    return nn_data
+    # return nn_data
 

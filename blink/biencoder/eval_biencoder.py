@@ -9,12 +9,12 @@ import argparse
 import json
 import logging
 import os
+from pathlib import Path
 import torch
 from tqdm import tqdm
 
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 
-from pytorch_transformers.tokenization_bert import BertTokenizer
 
 from blink.biencoder.biencoder import BiEncoderRanker
 import blink.biencoder.data_process as data
@@ -287,6 +287,13 @@ def main(params):
     test_dataloader = DataLoader(test_tensor_data, batch_size=params["eval_batch_size"], num_workers=os.cpu_count(), prefetch_factor=2)
 
     save_results = params.get("save_topk_result")
+    save_data_dir = os.path.join(
+            params['output_path'],
+            "top%d_candidates/%s" % (params['top_k'], params['mode']),
+        )
+    if save_results: 
+        if not os.path.exists(save_data_dir):
+            Path(save_data_dir).mkdir(parents=True, exist_ok=True)
     new_data = nnquery.get_topk_predictions(
         reranker,
         test_dataloader,
@@ -297,17 +304,14 @@ def main(params):
         params["top_k"],
         params.get("zeshel", None),
         save_results,
+        save_data_dir,
     )
 
-    if save_results: 
-        save_data_dir = os.path.join(
-            params['output_path'],
-            "top%d_candidates" % params['top_k'],
-        )
-        if not os.path.exists(save_data_dir):
-            os.makedirs(save_data_dir)
-        save_data_path = os.path.join(save_data_dir, "%s.t7" % params['mode'])
-        torch.save(new_data, save_data_path)
+    # if save_results: 
+    #     if not os.path.exists(save_data_dir):
+    #         os.makedirs(save_data_dir)
+    #     save_data_path = os.path.join(save_data_dir, "%s.t7" % params['mode'])
+    #     torch.save(new_data, save_data_path)
 
 
 if __name__ == "__main__":

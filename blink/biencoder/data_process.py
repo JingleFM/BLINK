@@ -5,9 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 #
 
+import bz2
 import logging
 import torch
 from tqdm import tqdm, trange
+from glob import glob
 from torch.utils.data import DataLoader, TensorDataset
 
 from blink.biencoder.zeshel_utils import world_to_id
@@ -237,10 +239,12 @@ class MentionDataset(IterableDataset):
         self.title_key = title_key
         self.max_cand_length = max_cand_length
 
-        file_name = "{}.jsonl".format(dataset_name)
+        # file_name = "{}.jsonl".format(dataset_name)
+        file_name = "{}.jsonl.bz2".format(dataset_name)
         self.txt_file_path = os.path.join(preprocessed_json_data_parent_folder, file_name)
 
-        with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
+        # with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
+        with bz2.open(self.txt_file_path, mode="rt", encoding="utf-8") as file:
             for idx, _ in enumerate(file):
                 pass
             idx += 1
@@ -264,7 +268,8 @@ class MentionDataset(IterableDataset):
 
         num_workers = max(num_workers, 1)
 
-        with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
+        # with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
+        with bz2.open(self.txt_file_path, mode="rt", encoding="utf-8") as file:
             for idx, line in enumerate(file):
                 # if idx%3 != 0:
                 #     continue
