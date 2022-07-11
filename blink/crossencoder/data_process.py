@@ -160,13 +160,25 @@ class CrossencoderDataset(IterableDataset):
         self.max_seq_length = max_seq_length
         self.fnames = glob(os.path.join(preprocessed_json_data_parent_folder, dataset_name, "*.json.bz2"))
         self.fnames = sorted(self.fnames)
+        # self.fnames = self.fnames[::5]
         # idx = 0
         # for fname in self.fnames:
         #     with bz2.open(fname, mode="rt", encoding="utf-8") as file:
         #         j = json.load(file)
         #         idx += len(j['context_vecs'])
         # self.len = idx
-        self.len = int(1e6)
+
+        def get_count(fname):
+            with bz2.open(fname, "rt") as f:
+                j = json.load(f)
+                cnt = len(j['labels'])
+                return cnt
+
+
+        from joblib import Parallel, delayed
+
+        r = Parallel(n_jobs=os.cpu_count())(delayed(get_count)(fname) for fname in tqdm(self.fnames))
+        self.len = sum(r)
 
     def __len__(self):
         return self.len

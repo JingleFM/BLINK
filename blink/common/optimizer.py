@@ -10,7 +10,7 @@ import numpy as np
 
 from torch import nn
 
-from pytorch_transformers.optimization import AdamW
+from transformers.optimization import AdamW
 
 
 patterns_optimizer = {
