@@ -14,7 +14,7 @@ Train Biencoder model. Note: the following command requires to run on 8 GPUs wit
       --data_path data/zeshel/blink_format \
       --output_path models/zeshel/biencoder \  
       --learning_rate 1e-05 --num_train_epochs 5 --max_context_length 128 --max_cand_length 128 \
-      --train_batch_size 128 --eval_batch_size 64 --bert_model bert-large-uncased \
+      --train_batch_size 128 --eval_batch_size 64 --bert_model bert-large-uncased --lowercase \
       --type_optimization all_encoder_layers --data_parallel
 
 Get top-64 predictions from Biencoder model on train, valid and test dataset:

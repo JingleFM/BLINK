@@ -242,17 +242,23 @@ class MentionDataset(IterableDataset):
         # file_name = "{}.jsonl".format(dataset_name)
         file_name = "{}.jsonl.bz2".format(dataset_name)
         self.txt_file_path = os.path.join(preprocessed_json_data_parent_folder, file_name)
+        pattern = r"{}-*jsonl.bz2".format(dataset_name)
+        self.bz2_file_paths = glob(os.path.join(preprocessed_json_data_parent_folder, pattern))
 
-        # with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
-        with bz2.open(self.txt_file_path, mode="rt", encoding="utf-8") as file:
-            for idx, _ in enumerate(file):
-                pass
-            idx += 1
-            # idx = idx // 3
-            self.len = idx
+        def get_count(fname):
+            with bz2.open(fname, "rt") as f:
+                for idx, _ in enumerate(f):
+                    pass
+                return idx + 1
+
+        from joblib import Parallel, delayed
+
+        self.num_samples = sum(
+            Parallel(n_jobs=os.cpu_count())(delayed(get_count)(fname) for fname in tqdm(self.bz2_file_paths))
+        )
 
     def __len__(self):
-        return self.len
+        return self.num_samples
 
     def __iter__(self):
         use_world = True
@@ -268,64 +274,62 @@ class MentionDataset(IterableDataset):
 
         num_workers = max(num_workers, 1)
 
-        # with io.open(self.txt_file_path, mode="r", encoding="utf-8") as file:
-        with bz2.open(self.txt_file_path, mode="rt", encoding="utf-8") as file:
-            for idx, line in enumerate(file):
-                # if idx%3 != 0:
-                #     continue
-                if (idx+1)%num_workers != worker_id:
-                    continue
+        for fname in self.bz2_file_paths:
+            with bz2.open(fname, mode="rt", encoding="utf-8") as file:
+                for idx, line in enumerate(file):
+                    if (idx+1)%num_workers != worker_id:
+                        continue
 
-                sample = json.loads(line.strip())
-                try:
-                    context_tokens = get_context_representation(
-                        sample,
-                        self.tokenizer,
-                        self.max_context_length,
-                        self.mention_key,
-                        self.context_key,
-                        self.ent_start_token,
-                        self.ent_end_token,
+                    sample = json.loads(line.strip())
+                    try:
+                        context_tokens = get_context_representation(
+                            sample,
+                            self.tokenizer,
+                            self.max_context_length,
+                            self.mention_key,
+                            self.context_key,
+                            self.ent_start_token,
+                            self.ent_end_token,
+                        )
+                    except AssertionError as e:
+                        continue
+
+                    label = sample[self.label_key]
+                    title = sample.get(self.title_key, None)
+                    label_tokens = get_candidate_representation(
+                        label, self.tokenizer, self.max_cand_length, title,
                     )
-                except AssertionError as e:
-                    continue
+                    label_idx = int(sample["label_id"])
 
-                label = sample[self.label_key]
-                title = sample.get(self.title_key, None)
-                label_tokens = get_candidate_representation(
-                    label, self.tokenizer, self.max_cand_length, title,
-                )
-                label_idx = int(sample["label_id"])
+                    record = {
+                        "context": context_tokens,
+                        "label": label_tokens,
+                        "label_idx": [label_idx],
+                    }
 
-                record = {
-                    "context": context_tokens,
-                    "label": label_tokens,
-                    "label_idx": [label_idx],
-                }
+                    if "world" in sample:
+                        src = sample["world"]
+                        src = world_to_id[src]
+                        record["src"] = [src]
+                        use_world = True
+                    else:
+                        use_world = False
 
-                if "world" in sample:
-                    src = sample["world"]
-                    src = world_to_id[src]
-                    record["src"] = [src]
-                    use_world = True
-                else:
-                    use_world = False
-
-                context_vec = torch.tensor(
-                    record['context']['ids'], dtype=torch.long,
-                )
-                cand_vec = torch.tensor(
-                    record['label']['ids'], dtype=torch.long,
-                )
-                if use_world:
-                    src_vec = torch.tensor(
-                        record['src'], dtype=torch.long,
+                    context_vec = torch.tensor(
+                        record['context']['ids'], dtype=torch.long,
                     )
-                label_idx = torch.tensor(
-                    record['label_idx'], dtype=torch.long,
-                )
+                    cand_vec = torch.tensor(
+                        record['label']['ids'], dtype=torch.long,
+                    )
+                    if use_world:
+                        src_vec = torch.tensor(
+                            record['src'], dtype=torch.long,
+                        )
+                    label_idx = torch.tensor(
+                        record['label_idx'], dtype=torch.long,
+                    )
 
-                if use_world:
-                    yield (context_vec, cand_vec, src_vec, label_idx)
-                else:
-                    yield (context_vec, cand_vec, label_idx)
+                    if use_world:
+                        yield (context_vec, cand_vec, src_vec, label_idx)
+                    else:
+                        yield (context_vec, cand_vec, label_idx)
