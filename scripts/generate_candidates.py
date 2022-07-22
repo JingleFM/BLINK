@@ -53,7 +53,6 @@ def encode_candidate(
 def load_entity_dict(logger, params):
     path = params.get("entity_dict_path", None)
     assert path is not None, "Error! entity_dict_path is empty."
-    # path = "/home/abhinav/Projects/JingleFM/BLINK/data/jinglefm/documents/documents-a_j_s.jsonl"
 
     entity_list = []
     logger.info("Loading entity description from path: " + path)
@@ -185,7 +184,7 @@ biencoder_params["entity_dict_path"] = args.entity_dict_path
 biencoder_params["degug"] = False
 biencoder_params["data_parallel"] = True
 biencoder_params["no_cuda"] = False
-biencoder_params["max_context_length"] = 32
+# biencoder_params["max_context_length"] = 32
 biencoder_params["encode_batch_size"] = args.batch_size
 
 saved_cand_ids = getattr(args, 'saved_cand_ids', None)
