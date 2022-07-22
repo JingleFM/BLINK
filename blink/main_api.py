@@ -6,20 +6,14 @@
 #
 import argparse
 import json
-import sys
 
 from tqdm import tqdm
-import logging
 import torch
 import numpy as np
 
-import blink.ner as NER
-from torch.utils.data import DataLoader, SequentialSampler, TensorDataset
-from blink.biencoder.biencoder import BiEncoderRanker, load_biencoder
-from blink.biencoder.data_process import (
-    process_mention_data,
-    get_candidate_representation,
-)
+from torch.utils.data import DataLoader, SequentialSampler
+from blink.biencoder.biencoder import load_biencoder
+from blink.biencoder.data_process import process_mention_data
 import blink.candidate_ranking.utils as utils
 from blink.indexer.faiss_indexer import FaissIndexer
 

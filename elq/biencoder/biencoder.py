@@ -558,7 +558,7 @@ class BiEncoderRanker(torch.nn.Module):
         self.NULL_IDX = 0
         self.START_TOKEN = "[CLS]"
         self.END_TOKEN = "[SEP]"
-        self.tokenizer = BertTokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             params["bert_model"], do_lower_case=params["lowercase"]
         )
         # init model

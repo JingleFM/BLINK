@@ -47,7 +47,7 @@ HIGHLIGHTS = [
 ]
 
 from transformers import BertTokenizer
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 def _print_colorful_text(input_tokens, tokenizer, pred_triples):
     """

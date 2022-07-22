@@ -5,12 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 #
 import torch
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
+from torch.utils.data import DataLoader, SequentialSampler
 from blink.biencoder.biencoder import load_biencoder
 import blink.biencoder.data_process as data
 import blink.candidate_ranking.utils as utils
 import json
-import sys
 import os
 from tqdm import tqdm
 
@@ -22,7 +21,6 @@ def encode_candidate(
     candidate_pool,
     encode_batch_size,
     silent,
-    logger,
 ):
     reranker.model.eval()
     device = reranker.device

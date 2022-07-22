@@ -5,33 +5,22 @@
 # LICENSE file in the root directory of this source tree.
 #
 import os
-import argparse
-import pickle
 import torch
-import json
-import sys
-import io
 import random
 import time
 import numpy as np
 
-from multiprocessing.pool import ThreadPool
-
 from tqdm import tqdm, trange
-from collections import OrderedDict
 
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
+from torch.utils.data import DataLoader
 
-from pytorch_transformers.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 from pytorch_transformers.optimization import WarmupLinearSchedule
 from pytorch_transformers.modeling_utils import WEIGHTS_NAME
 
 from blink.biencoder.biencoder import BiEncoderRanker, load_biencoder
-import logging
 
 import blink.candidate_ranking.utils as utils
 import blink.biencoder.data_process as data
-from blink.biencoder.zeshel_utils import DOC_PATH, WORLDS, world_to_id
 from blink.common.optimizer import get_bert_optimizer
 from blink.common.params import BlinkParser
 

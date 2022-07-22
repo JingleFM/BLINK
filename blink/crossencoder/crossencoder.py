@@ -25,7 +25,7 @@ from pytorch_transformers.modeling_roberta import (
     RobertaModel,
 )
 
-from transformers import AutoModel, BertTokenizer
+from transformers import AutoModel, AutoTokenizer
 
 from blink.common.ranker_base import BertEncoder, get_model_obj
 from blink.common.optimizer import get_bert_optimizer
@@ -68,7 +68,7 @@ class CrossEncoderRanker(torch.nn.Module):
         )
         self.n_gpu = torch.cuda.device_count()
 
-        self.tokenizer = BertTokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             params["bert_model"], do_lower_case=params["lowercase"], do_basic_tokenize=False,
         )
 

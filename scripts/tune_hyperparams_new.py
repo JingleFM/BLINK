@@ -12,7 +12,7 @@ from elq.vcg_utils.measures import entity_linking_tp_with_overlap
 from tqdm import tqdm
 
 from transformers import BertTokenizer
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 
 id2title = json.load(open("models/id2title.json"))

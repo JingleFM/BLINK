@@ -239,11 +239,9 @@ class MentionDataset(IterableDataset):
         self.title_key = title_key
         self.max_cand_length = max_cand_length
 
-        # file_name = "{}.jsonl".format(dataset_name)
-        file_name = "{}.jsonl.bz2".format(dataset_name)
-        self.txt_file_path = os.path.join(preprocessed_json_data_parent_folder, file_name)
         pattern = r"{}-*jsonl.bz2".format(dataset_name)
         self.bz2_file_paths = glob(os.path.join(preprocessed_json_data_parent_folder, pattern))
+        # self.bz2_file_paths = self.bz2_file_paths[::3]
 
         def get_count(fname):
             with bz2.open(fname, "rt") as f:

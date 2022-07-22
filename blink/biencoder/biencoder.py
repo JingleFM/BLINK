@@ -11,7 +11,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from transformers import AutoModel, BertTokenizer
+from transformers import AutoModel, AutoTokenizer
+from blink.common.params import ENT_END_TAG, ENT_START_TAG, ENT_TITLE_TAG
 
 from blink.common.ranker_base import BertEncoder, get_model_obj
 from blink.common.optimizer import get_bert_optimizer
@@ -76,9 +77,18 @@ class BiEncoderRanker(torch.nn.Module):
         self.NULL_IDX = 0
         self.START_TOKEN = "[CLS]"
         self.END_TOKEN = "[SEP]"
-        self.tokenizer = BertTokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             params["bert_model"], do_lower_case=params["lowercase"], do_basic_tokenize=False,
         )
+        special_tokens_dict = {
+            "additional_special_tokens": [
+                ENT_START_TAG,
+                ENT_END_TAG,
+                ENT_TITLE_TAG,
+            ],
+        }
+        self.tokenizer.add_special_tokens(special_tokens_dict)
+        
         # init model
         self.build_model()
         model_path = params.get("path_to_model", None)
