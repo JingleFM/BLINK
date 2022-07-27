@@ -8,9 +8,9 @@
 import bz2
 import logging
 import torch
-from tqdm import tqdm, trange
+from tqdm import tqdm
 from glob import glob
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import TensorDataset
 
 from blink.biencoder.zeshel_utils import world_to_id
 from blink.common.params import ENT_START_TAG, ENT_END_TAG, ENT_TITLE_TAG
@@ -241,6 +241,7 @@ class MentionDataset(IterableDataset):
 
         pattern = r"{}-*jsonl.bz2".format(dataset_name)
         self.bz2_file_paths = glob(os.path.join(preprocessed_json_data_parent_folder, pattern))
+        self.bz2_file_paths = sorted(self.bz2_file_paths)
         # self.bz2_file_paths = self.bz2_file_paths[::3]
 
         def get_count(fname):

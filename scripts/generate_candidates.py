@@ -222,7 +222,6 @@ candidate_encoding = encode_candidate(
     candidate_pool[args.chunk_start:args.chunk_end],
     biencoder_params["encode_batch_size"],
     biencoder_params["silent"],
-    logger,
 )
 
 if save_file is not None:

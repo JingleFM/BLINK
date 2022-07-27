@@ -78,7 +78,7 @@ class BiEncoderRanker(torch.nn.Module):
         self.START_TOKEN = "[CLS]"
         self.END_TOKEN = "[SEP]"
         self.tokenizer = AutoTokenizer.from_pretrained(
-            params["bert_model"], do_lower_case=params["lowercase"], do_basic_tokenize=False,
+            params["bert_model"], do_lower_case=params["lowercase"],
         )
         special_tokens_dict = {
             "additional_special_tokens": [
