@@ -334,6 +334,12 @@ def load_models(args, logger=None):
     )
 
 
+def logits_to_probs(logits):
+    odds = np.exp(logits)
+    probs = odds / (1+odds)
+    return probs
+
+
 def run(
     args,
     logger,
@@ -432,14 +438,16 @@ def run(
 
             # print biencoder prediction
             idx = 0
-            for entity_list, sample in zip(nns, samples):
+            for entity_list, sample, score_list in zip(nns, samples, scores):
                 e_id = entity_list[0]
                 e_title = id2title[e_id]
                 e_text = id2text[e_id]
-                e_url = id2url[e_id]
+                e_url = id2url.get(e_id)
                 _print_colorful_prediction(
                     idx, sample, e_id, e_title, e_text, e_url, args.show_url
                 )
+                print(f"score: {score_list[0]}")
+                
                 idx += 1
             print()
 
@@ -527,14 +535,17 @@ def run(
                 e_id = entity_list[index_list[-1]]
                 e_title = id2title[e_id]
                 e_text = id2text[e_id]
-                e_url = id2url[e_id]
+                e_url = id2url.get(e_id)
                 _print_colorful_prediction(
                     idx, sample, e_id, e_title, e_text, e_url, args.show_url
                 )
+                logit = unsorted_scores[idx][index_list[-1]]
+                prob = logits_to_probs(logit)
+                print(f"score: {prob}")
+
                 idx += 1
             print()
         else:
-
             scores = []
             predictions = []
             for entity_list, index_list, scores_list in zip(
@@ -552,7 +563,8 @@ def run(
                     e_id = entity_list[index]
                     e_title = id2title[e_id]
                     sample_prediction.append(e_title)
-                    sample_scores.append(scores_list[index])
+                    prob = logits_to_probs(scores_list[index])
+                    sample_scores.append(prob)
                 predictions.append(sample_prediction)
                 scores.append(sample_scores)
 
