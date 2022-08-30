@@ -63,10 +63,10 @@ def _print_colorful_text(input_sentence, samples):
 
 
 def _print_colorful_prediction(
-    idx, sample, e_id, e_title, e_text, e_url, show_url=False
+    idx, sample, e_idx, e_title, e_text, e_url, show_url=False
 ):
     print(colored(sample["mention"], "grey", HIGHLIGHTS[idx % len(HIGHLIGHTS)]))
-    to_print = "id:{}\ntitle:{}\ntext:{}\n".format(e_id, e_title, e_text[:256])
+    to_print = "id:{}\ntitle:{}\ntext:{}\n".format(e_idx, e_title, e_text[:256])
     if show_url:
         to_print += "url:{}\n".format(e_url)
     print(to_print)
@@ -112,14 +112,14 @@ def _load_candidates(
         indexer.deserialize_from(index_path)
 
     # load all the 5903527 entities
-    title2id = {}
-    id2title = {}
-    id2text = {}
+    title2idx = {}
+    idx2title = {}
+    idx2text = {}
+    idx2id = {}
     wikipedia_id2local_id = {}
     local_idx = 0
     with open(entity_catalogue, "r") as fin:
-        lines = fin.readlines()
-        for line in lines:
+        for line in fin:
             entity = json.loads(line)
 
             if "idx" in entity:
@@ -132,21 +132,23 @@ def _load_candidates(
                 assert wikipedia_id not in wikipedia_id2local_id
                 wikipedia_id2local_id[wikipedia_id] = local_idx
 
-            title2id[entity["title"]] = local_idx
-            id2title[local_idx] = entity["title"]
-            id2text[local_idx] = entity["text"]
+            title2idx[entity["title"]] = local_idx
+            idx2title[local_idx] = entity["title"]
+            idx2text[local_idx] = entity["text"]
+            idx2id[local_idx] = entity["id"]
             local_idx += 1
     return (
         candidate_encoding,
-        title2id,
-        id2title,
-        id2text,
+        title2idx,
+        idx2title,
+        idx2text,
+        idx2id,
         wikipedia_id2local_id,
         indexer,
     )
 
 
-def __map_test_entities(test_entities_path, title2id, logger):
+def __map_test_entities(test_entities_path, title2idx, logger):
     # load the 732859 tac_kbp_ref_know_base entities
     kb2id = {}
     missing_pages = 0
@@ -155,10 +157,10 @@ def __map_test_entities(test_entities_path, title2id, logger):
         lines = fin.readlines()
         for line in lines:
             entity = json.loads(line)
-            if entity["title"] not in title2id:
+            if entity["title"] not in title2idx:
                 missing_pages += 1
             else:
-                kb2id[entity["entity_id"]] = title2id[entity["title"]]
+                kb2id[entity["entity_id"]] = title2idx[entity["title"]]
             n += 1
     if logger:
         logger.info("missing {}/{} pages".format(missing_pages, n))
@@ -203,11 +205,11 @@ def __load_test(test_filename, kb2id, wikipedia_id2local_id, logger):
 
 
 def _get_test_samples(
-    test_filename, test_entities_path, title2id, wikipedia_id2local_id, logger
+    test_filename, test_entities_path, title2idx, wikipedia_id2local_id, logger
 ):
     kb2id = None
     if test_entities_path:
-        kb2id = __map_test_entities(test_entities_path, title2id, logger)
+        kb2id = __map_test_entities(test_entities_path, title2idx, logger)
     test_samples = __load_test(test_filename, kb2id, wikipedia_id2local_id, logger)
     return test_samples
 
@@ -307,9 +309,10 @@ def load_models(args, logger=None):
         logger.info("loading candidate entities")
     (
         candidate_encoding,
-        title2id,
-        id2title,
-        id2text,
+        title2idx,
+        idx2title,
+        idx2text,
+        idx2id,
         wikipedia_id2local_id,
         faiss_indexer,
     ) = _load_candidates(
@@ -326,9 +329,10 @@ def load_models(args, logger=None):
         crossencoder,
         crossencoder_params,
         candidate_encoding,
-        title2id,
-        id2title,
-        id2text,
+        title2idx,
+        idx2title,
+        idx2text,
+        idx2id,
         wikipedia_id2local_id,
         faiss_indexer,
     )
@@ -348,9 +352,10 @@ def run(
     crossencoder,
     crossencoder_params,
     candidate_encoding,
-    title2id,
-    id2title,
-    id2text,
+    title2idx,
+    idx2title,
+    idx2text,
+    idx2id,
     wikipedia_id2local_id,
     faiss_indexer=None,
     test_data=None,
@@ -401,7 +406,7 @@ def run(
                 samples = _get_test_samples(
                     args.test_mentions,
                     args.test_entities,
-                    title2id,
+                    title2idx,
                     wikipedia_id2local_id,
                     logger,
                 )
@@ -439,12 +444,12 @@ def run(
             # print biencoder prediction
             idx = 0
             for entity_list, sample, score_list in zip(nns, samples, scores):
-                e_id = entity_list[0]
-                e_title = id2title[e_id]
-                e_text = id2text[e_id]
-                e_url = id2url.get(e_id)
+                e_idx = entity_list[0]
+                e_title = idx2title[e_idx]
+                e_text = idx2text[e_idx]
+                e_url = id2url.get(e_idx)
                 _print_colorful_prediction(
-                    idx, sample, e_id, e_title, e_text, e_url, args.show_url
+                    idx, sample, e_idx, e_title, e_text, e_url, args.show_url
                 )
                 print(f"score: {score_list[0]}")
                 
@@ -484,9 +489,11 @@ def run(
                 predictions = []
                 for entity_list in nns:
                     sample_prediction = []
-                    for e_id in entity_list:
-                        e_title = id2title[e_id]
-                        sample_prediction.append(e_title)
+                    for e_idx in entity_list:
+                        # e_title = idx2title[e_idx]
+                        # sample_prediction.append(e_title)
+                        e_id = idx2id[e_idx]
+                        sample_prediction.append(e_id)
                     predictions.append(sample_prediction)
 
                 # use only biencoder
@@ -502,7 +509,7 @@ def run(
 
         # prepare crossencoder data
         context_input, candidate_input, label_input = prepare_crossencoder_data(
-            crossencoder.tokenizer, samples, labels, nns, id2title, id2text, keep_all, top_k=top_k
+            crossencoder.tokenizer, samples, labels, nns, idx2title, idx2text, keep_all, top_k=top_k
         )
 
         context_input = modify(
@@ -532,12 +539,12 @@ def run(
             # print crossencoder prediction
             idx = 0
             for entity_list, index_list, sample in zip(nns, index_array, samples):
-                e_id = entity_list[index_list[-1]]
-                e_title = id2title[e_id]
-                e_text = id2text[e_id]
-                e_url = id2url.get(e_id)
+                e_idx = entity_list[index_list[-1]]
+                e_title = idx2title[e_idx]
+                e_text = idx2text[e_idx]
+                e_url = id2url.get(e_idx)
                 _print_colorful_prediction(
-                    idx, sample, e_id, e_title, e_text, e_url, args.show_url
+                    idx, sample, e_idx, e_title, e_text, e_url, args.show_url
                 )
                 logit = unsorted_scores[idx][index_list[-1]]
                 prob = logits_to_probs(logit)
@@ -560,9 +567,11 @@ def run(
                 sample_prediction = []
                 sample_scores = []
                 for index in index_list:
-                    e_id = entity_list[index]
-                    e_title = id2title[e_id]
-                    sample_prediction.append(e_title)
+                    e_idx = entity_list[index]
+                    # e_title = idx2title[e_idx]
+                    # sample_prediction.append(e_title)
+                    e_id = idx2id[e_idx]
+                    sample_prediction.append(e_id)
                     prob = logits_to_probs(scores_list[index])
                     sample_scores.append(prob)
                 predictions.append(sample_prediction)

@@ -36,8 +36,8 @@ class Flair(NER_model):
             sent = Sentence(sent, use_tokenizer=True)
             self.model.predict(sent)
             sent_mentions = sent.to_dict(tag_type="ner")["entities"]
+            sent_mentions = list(filter(lambda x: x['labels'][0].value == "PER", sent_mentions))
             for mention in sent_mentions:
                 mention["sent_idx"] = sent_idx
             mentions.extend(sent_mentions)
         return {"sentences": sentences, "mentions": mentions}
-
