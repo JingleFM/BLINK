@@ -233,10 +233,13 @@ def _process_biencoder_dataloader(samples, tokenizer, biencoder_params):
 
 def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, indexer=None):
     biencoder.model.eval()
+    if candidate_encoding is not None:
+        candidate_encoding = candidate_encoding.to(biencoder.device)
     labels = []
     nns = []
     all_scores = []
     for batch in tqdm(dataloader):
+        batch = tuple(t.to(biencoder.device) for t in batch)
         context_input, _, label_ids = batch
         with torch.no_grad():
             if indexer is not None:
@@ -251,7 +254,7 @@ def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, indexer
                 scores = scores.data.numpy()
                 indicies = indicies.data.numpy()
 
-        labels.extend(label_ids.data.numpy())
+        labels.extend(label_ids.cpu().detach())
         nns.extend(indicies)
         all_scores.extend(scores)
     return labels, nns, all_scores
@@ -524,7 +527,9 @@ def run(
         )
 
         # run crossencoder and get accuracy
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device(
+            "cuda" if torch.cuda.is_available() and not crossencoder_params["no_cuda"] else "cpu"
+        )
         accuracy, index_array, unsorted_scores = _run_crossencoder(
             crossencoder,
             dataloader,

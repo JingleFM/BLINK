@@ -140,13 +140,14 @@ class CrossEncoderRanker(torch.nn.Module):
             text_vecs, self.NULL_IDX, context_len,
         )
         embedding_ctxt = self.model(token_idx_ctxt, segment_idx_ctxt, mask_ctxt,)
-
+        # return embedding_ctxt.view(-1, num_cand).cpu().detach()
         return embedding_ctxt.view(-1, num_cand)
 
     def forward(self, input_idx, label_input, context_len):
         scores = self.score_candidate(input_idx, context_len)
         loss = F.cross_entropy(scores, label_input, reduction="mean")
-        return loss, scores
+        # TODO: Will this work during training?
+        return loss.cpu().detach(), scores.cpu().detach()
 
 
 def to_bert_input(token_idx, null_idx, segment_pos):
