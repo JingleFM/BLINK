@@ -64,18 +64,10 @@ def get_context_representation(
     input_ids += padding
 
     if len(input_ids) != max_seq_length:
-        logging.error(
-            "Context representation is not of correct length: {}".format(
-                len(input_ids)
-            )
-        )
-        logging.error(sample)
-        logging.error(context_left)
-        logging.error(context_right)
-        logging.error(mention_tokens)
-        logging.error(context_tokens)
-        logging.error(input_ids)
-        raise ValueError("Context representation is not of correct length")
+
+        # Create dummy context
+        context_tokens = ["[CLS]"] + ["[PAD]"] * (max_seq_length - 2) + ["[SEP]"]
+        input_ids = tokenizer.convert_tokens_to_ids(context_tokens)
 
     assert len(input_ids) == max_seq_length
 
@@ -155,15 +147,24 @@ def process_mention_data(
     use_world = True
 
     for idx, sample in enumerate(iter_):
-        context_tokens = get_context_representation(
-            sample,
-            tokenizer,
-            max_context_length,
-            mention_key,
-            context_key,
-            ent_start_token,
-            ent_end_token,
-        )
+        try:
+            context_tokens = get_context_representation(
+                sample,
+                tokenizer,
+                max_context_length,
+                mention_key,
+                context_key,
+                ent_start_token,
+                ent_end_token,
+            )
+        except ValueError:
+            context_tokens = ["[CLS]"] + [] + ["[SEP]"]
+            input_ids = tokenizer.convert_tokens_to_ids(context_tokens)
+            context_tokens =  {
+                "tokens": context_tokens,
+                "ids": input_ids,
+            }
+
 
         label = sample[label_key]
         title = sample.get(title_key, None)
