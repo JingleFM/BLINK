@@ -147,24 +147,15 @@ def process_mention_data(
     use_world = True
 
     for idx, sample in enumerate(iter_):
-        try:
-            context_tokens = get_context_representation(
-                sample,
-                tokenizer,
-                max_context_length,
-                mention_key,
-                context_key,
-                ent_start_token,
-                ent_end_token,
-            )
-        except ValueError:
-            context_tokens = ["[CLS]"] + [] + ["[SEP]"]
-            input_ids = tokenizer.convert_tokens_to_ids(context_tokens)
-            context_tokens =  {
-                "tokens": context_tokens,
-                "ids": input_ids,
-            }
-
+        context_tokens = get_context_representation(
+            sample,
+            tokenizer,
+            max_context_length,
+            mention_key,
+            context_key,
+            ent_start_token,
+            ent_end_token,
+        )
 
         label = sample[label_key]
         title = sample.get(title_key, None)
